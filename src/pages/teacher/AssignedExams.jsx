@@ -1,0 +1,2 @@
+import { useEffect,useState } from 'react';import { supabase } from '../../lib/supabaseClient';
+export default function AssignedExams(){const [exams,setExams]=useState([]);useEffect(()=>{supabase.from('exams').select('*').order('created_at',{ascending:false}).then(({data})=>setExams(data||[]))},[]);return <><h1>Assigned Exams</h1><div className="table">{exams.map(e=><div className="tr" key={e.id}><span><b>{e.title}</b><small>{e.total_questions} questions • {e.duration_minutes} minutes • {e.difficulty}</small></span></div>)}</div></>}
