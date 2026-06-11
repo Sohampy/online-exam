@@ -119,9 +119,19 @@ for select using (
   )
 );
 
+drop policy if exists "admin insert profiles" on public.profiles;
+create policy "admin insert profiles" on public.profiles
+for insert with check (public.is_main_admin() or id = auth.uid());
+
+drop policy if exists "admin upsert profiles" on public.profiles;
+create policy "admin upsert profiles" on public.profiles
+for update using (public.is_main_admin() or id = auth.uid())
+with check (public.is_main_admin() or id = auth.uid());
+
 drop policy if exists "classes readable authenticated" on public.classes;
-create policy "classes readable authenticated" on public.classes
-for select to authenticated using (true);
+drop policy if exists "active classes readable public" on public.classes;
+create policy "active classes readable public" on public.classes
+for select using (is_active = true or public.is_main_admin());
 
 drop policy if exists "admin manage classes" on public.classes;
 create policy "admin manage classes" on public.classes
