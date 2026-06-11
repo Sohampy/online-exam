@@ -11,11 +11,12 @@ export default function Instructions() {
   const nav = useNavigate();
   const [exam, setExam] = useState(null);
   const [attempt, setAttempt] = useState(null);
+  const [attempts, setAttempts] = useState([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     async function load() {
-      const [{ data: examData }, { data: attemptData }] = await Promise.all([
+      const [{ data: examData }, { data: attemptRows }] = await Promise.all([
         supabase.from('exams').select('*').eq('id', examId).single(),
         supabase
           .from('student_attempts')
@@ -23,11 +24,10 @@ export default function Instructions() {
           .eq('exam_id', examId)
           .eq('student_id', user.id)
           .order('started_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
       ]);
       setExam(examData);
-      setAttempt(attemptData);
+      setAttempts(attemptRows || []);
+      setAttempt((attemptRows || [])[0] || null);
     }
     if (user?.id) load();
   }, [examId, user?.id]);
@@ -48,6 +48,8 @@ export default function Instructions() {
 
   const isSubmitted = attempt?.status === 'submitted';
   const isInProgress = attempt?.status === 'in_progress';
+  const submittedCount = attempts.filter(row => row.status === 'submitted').length;
+  const canRetake = exam.allow_multiple_attempts && (!exam.max_attempts || submittedCount < exam.max_attempts);
 
   return (
     <div className="instructions-shell">
@@ -62,8 +64,10 @@ export default function Instructions() {
           <div><AlertCircle size={18} /><b>{exam.difficulty}</b><span>Difficulty</span></div>
         </div>
 
-        {isSubmitted ? (
+        {isSubmitted && !canRetake ? (
           <div className="notice success"><CheckCircle2 size={18} /> You have already submitted this exam.</div>
+        ) : isSubmitted && canRetake ? (
+          <div className="notice info"><PlayCircle size={18} /> You have submitted {submittedCount} attempt(s). Another attempt is available.</div>
         ) : isInProgress ? (
           <div className="notice info"><PlayCircle size={18} /> You already have an active attempt for this exam.</div>
         ) : (
@@ -74,7 +78,7 @@ export default function Instructions() {
           </ul>
         )}
 
-        {isSubmitted ? (
+        {isSubmitted && !canRetake ? (
           <Link className="btn secondary" to={`/student/result/${attempt.id}`}><CheckCircle2 size={18} /> View Result</Link>
         ) : isInProgress ? (
           <Link className="btn" to={`/student/attempt/${attempt.id}`}><PlayCircle size={18} /> Resume Exam</Link>

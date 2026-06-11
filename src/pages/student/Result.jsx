@@ -4,6 +4,11 @@ import { AlertCircle, Award, BarChart3, CheckCircle2, EyeOff, Home, Target, XCir
 import { supabase } from '../../lib/supabaseClient';
 import { getChapterWisePerformance, getQuestionWisePerformance } from '../../services/examService.js';
 
+function formatDuration(seconds) {
+  const safe = Number(seconds || 0);
+  return `${Math.floor(safe / 60)}m ${safe % 60}s`;
+}
+
 export default function Result() {
   const { attemptId } = useParams();
   const [attempt, setAttempt] = useState(null);
@@ -73,7 +78,9 @@ export default function Result() {
         <div className="card soft-card"><Award size={22} /><h3>{attempt.total_score}</h3><p>Total Score</p></div>
         <div className="card soft-card"><CheckCircle2 size={22} /><h3>{attempt.correct_count}</h3><p>Correct</p></div>
         <div className="card soft-card"><XCircle size={22} /><h3>{attempt.incorrect_count}</h3><p>Incorrect</p></div>
-        <div className="card soft-card"><Target size={22} /><h3>{attempt.accuracy}%</h3><p>Accuracy</p></div>
+        <div className="card soft-card"><Target size={22} /><h3>{attempt.percentage || attempt.accuracy}%</h3><p>Percentage</p></div>
+        <div className="card soft-card"><h3>{attempt.attempt_number || 1}</h3><p>Attempt number</p></div>
+        <div className="card soft-card"><h3>{formatDuration(attempt.time_taken_seconds)}</h3><p>Time taken</p></div>
       </div>
 
       {attempt.exams?.analysis_visible ? (
@@ -125,7 +132,7 @@ export default function Result() {
                       <span>Q{question.question_order}</span>
                       <div>
                         <b>{question.question_text}</b>
-                        <small>{question.difficulty} • {question.marks || 1} mark</small>
+                        <small>{question.chapter_name} • {question.difficulty} • {question.marks || 1} mark</small>
                       </div>
                     </div>
                     <div className="answer-grid">
@@ -135,6 +142,7 @@ export default function Result() {
                         {question.is_correct ? <CheckCircle2 size={16} /> : <XCircle size={16} />} {status}
                       </span>
                     </div>
+                    {question.explanation && <p className="muted"><b>Explanation:</b> {question.explanation}</p>}
                   </div>
                 );
               })}

@@ -1,19 +1,24 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BookOpenCheck, FileQuestion, Plus, ShieldCheck, Users } from 'lucide-react';
+import { Plus, ShieldCheck, Users } from 'lucide-react';
 import { createDetachedSupabaseClient, supabase } from '../../lib/supabaseClient';
 
-const emptyPerson = { full_name: '', email: '', password: '', role: 'student' };
+const emptyPerson = { full_name: '', email: '', password: '', role: 'student', class_id: '' };
 
 export default function Permissions() {
   const [users, setUsers] = useState([]);
+  const [classes, setClasses] = useState([]);
   const [savingId, setSavingId] = useState(null);
   const [person, setPerson] = useState(emptyPerson);
   const [creating, setCreating] = useState(false);
   const [createMessage, setCreateMessage] = useState('');
 
   async function load() {
-    const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+    const [{ data }, { data: classRows }] = await Promise.all([
+      supabase.from('profiles').select('*').order('created_at', { ascending: false }),
+      supabase.from('classes').select('*').eq('is_active', true).order('class_name')
+    ]);
     setUsers(data || []);
+    setClasses(classRows || []);
   }
 
   useEffect(() => {
@@ -24,10 +29,10 @@ export default function Permissions() {
     return {
       users: users.length,
       teachers: users.filter(user => user.role === 'teacher').length,
-      questionAccess: users.filter(user => user.can_manage_questions).length,
-      reportAccess: users.filter(user => user.can_view_reports).length
+      students: users.filter(user => user.role === 'student').length
     };
   }, [users]);
+  const activeClasses = useMemo(() => [...new Map(classes.filter(item => item.is_active !== false).map(item => [item.id, item])).values()], [classes]);
 
   async function update(user, patch) {
     setSavingId(user.id);
@@ -45,11 +50,13 @@ export default function Permissions() {
 
     setCreating(true);
     const detached = createDetachedSupabaseClient();
+    const selectedClass = classes.find(item => item.id === person.class_id);
+    const classLabel = selectedClass ? `${selectedClass.class_name} ${selectedClass.section_name || ''}`.trim() : '';
     const { data, error } = await detached.auth.signUp({
       email: person.email.trim(),
       password: person.password,
       options: {
-        data: { full_name: person.full_name.trim(), role: person.role }
+        data: { full_name: person.full_name.trim(), role: person.role, class_id: person.class_id, class_name: classLabel }
       }
     });
 
@@ -64,7 +71,9 @@ export default function Permissions() {
         id: data.user.id,
         full_name: person.full_name.trim(),
         email: person.email.trim(),
-        role: person.role
+        role: person.role,
+        class_id: person.class_id || null,
+        class_name: classLabel || null
       });
     }
 
@@ -79,8 +88,8 @@ export default function Permissions() {
       <section className="dashboard-hero permission-hero">
         <div>
           <span className="eyebrow">Access Settings</span>
-          <h1>Control who can manage questions and view reports.</h1>
-          <p>These permissions are for admins and teachers. Student result and detailed-analysis access is controlled from Exam Management.</p>
+          <h1>Create people and set their role.</h1>
+          <p>Question management and reports are available automatically by role for Admin and Teacher.</p>
         </div>
         <div className="hero-stat">
           <ShieldCheck size={28} />
@@ -91,8 +100,8 @@ export default function Permissions() {
 
       <div className="cards stat-strip">
         <div className="card soft-card"><Users size={22} /><h3>{stats.users}</h3><p>Total users</p></div>
-        <div className="card soft-card"><FileQuestion size={22} /><h3>{stats.questionAccess}</h3><p>Question access</p></div>
-        <div className="card soft-card"><BookOpenCheck size={22} /><h3>{stats.reportAccess}</h3><p>Report access</p></div>
+        <div className="card soft-card"><Users size={22} /><h3>{stats.teachers}</h3><p>Teachers</p></div>
+        <div className="card soft-card"><Users size={22} /><h3>{stats.students}</h3><p>Students</p></div>
       </div>
 
       <form className="panel add-person-panel" onSubmit={createPerson}>
@@ -107,6 +116,7 @@ export default function Permissions() {
           <label className="field">Full name<input value={person.full_name} onChange={e => setPerson({ ...person, full_name: e.target.value })} placeholder="Person name" /></label>
           <label className="field">Email<input type="email" value={person.email} onChange={e => setPerson({ ...person, email: e.target.value })} placeholder="email@example.com" /></label>
           <label className="field">Role<select value={person.role} onChange={e => setPerson({ ...person, role: e.target.value })}><option value="student">Student</option><option value="teacher">Teacher</option><option value="main_admin">Main Admin</option></select></label>
+          {person.role === 'student' && <label className="field">Class<select value={person.class_id} onChange={e => setPerson({ ...person, class_id: e.target.value })}><option value="">Select class</option>{activeClasses.map(item => <option value={item.id} key={item.id}>{item.class_name} {item.section_name}</option>)}</select></label>}
           <label className="field">Temporary password<input type="text" value={person.password} onChange={e => setPerson({ ...person, password: e.target.value })} placeholder="Minimum 6 characters" /></label>
         </div>
         <button className="btn" disabled={creating}><Plus size={18} /> {creating ? 'Adding...' : 'Add Person'}</button>
@@ -125,10 +135,7 @@ export default function Permissions() {
               <option value="teacher">Teacher</option>
               <option value="main_admin">Main Admin</option>
             </select>
-            <div className="permission-switches">
-              <label><input type="checkbox" checked={user.can_manage_questions} onChange={e => update(user, { can_manage_questions: e.target.checked })} disabled={savingId === user.id} /> Question bank</label>
-              <label><input type="checkbox" checked={user.can_view_reports} onChange={e => update(user, { can_view_reports: e.target.checked })} disabled={savingId === user.id} /> Reports</label>
-            </div>
+            <span className={user.is_active === false ? 'status-pill' : 'status-pill done'}>{user.is_active === false ? 'Removed' : 'Active'}</span>
           </article>
         ))}
       </div>

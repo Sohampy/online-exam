@@ -35,11 +35,11 @@ export function AuthProvider({ children }) {
     return supabase.auth.signInWithPassword({ email, password });
   }
 
-  async function register(fullName, email, password) {
+  async function register(fullName, email, password, classId = '', className = '') {
     return supabase.auth.signUp({
       email,
       password,
-      options: { data: { full_name: fullName, role: 'student' } }
+      options: { data: { full_name: fullName, role: 'student', class_id: classId, class_name: className } }
     });
   }
 

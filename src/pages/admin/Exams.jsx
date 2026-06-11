@@ -9,9 +9,17 @@ const empty = {
   min_chapters: 5,
   duration_minutes: 30,
   marks_per_question: 1,
+  total_marks: 20,
+  passing_marks: 0,
   difficulty: 'mixed',
   result_visible: false,
-  analysis_visible: false
+  analysis_visible: false,
+  allow_multiple_attempts: false,
+  max_attempts: 2,
+  show_correct_answers: true,
+  randomize_questions: true,
+  randomize_options: false,
+  status: 'published'
 };
 
 function numberValue(value, fallback = 0) {
@@ -20,27 +28,36 @@ function numberValue(value, fallback = 0) {
 }
 
 export default function Exams() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [chapters, setChapters] = useState([]);
   const [questions, setQuestions] = useState([]);
+  const [classes, setClasses] = useState([]);
+  const [students, setStudents] = useState([]);
   const [selected, setSelected] = useState([]);
+  const [visibility, setVisibility] = useState({ type: 'all_students', classIds: [], studentIds: [] });
   const [exams, setExams] = useState([]);
   const [form, setForm] = useState(empty);
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [showValidation, setShowValidation] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
 
   async function load() {
-    const [{ data: c }, { data: q }, { data: e }] = await Promise.all([
+    const [{ data: c }, { data: q }, { data: e }, { data: classRows }, { data: studentRows }] = await Promise.all([
       supabase.from('chapters').select('*').order('chapter_name'),
-      supabase.from('questions').select('id,chapter_id,difficulty'),
+      supabase.from('questions').select('id,chapter_id,difficulty,is_deleted'),
       supabase
         .from('exams')
-        .select('*, exam_chapters(chapter_id, chapters(chapter_name))')
-        .order('created_at', { ascending: false })
+        .select('*, exam_chapters(chapter_id, chapters(chapter_name)), exam_visibility(*)')
+        .order('created_at', { ascending: false }),
+      supabase.from('classes').select('*').eq('is_active', true).order('class_name'),
+      supabase.from('profiles').select('id,full_name,email,class_id,class_name,role,is_active').eq('role', 'student')
     ]);
     setChapters(c || []);
     setQuestions(q || []);
     setExams(e || []);
+    setClasses(classRows || []);
+    setStudents((studentRows || []).filter(row => row.is_active !== false));
   }
 
   useEffect(() => {
@@ -48,7 +65,7 @@ export default function Exams() {
   }, []);
 
   const questionCounts = useMemo(() => {
-    return questions.reduce((map, question) => {
+    return questions.filter(question => question.is_deleted !== true).reduce((map, question) => {
       const key = `${question.chapter_id}:${question.difficulty}`;
       map[key] = (map[key] || 0) + 1;
       map[`${question.chapter_id}:mixed`] = (map[`${question.chapter_id}:mixed`] || 0) + 1;
@@ -84,7 +101,9 @@ export default function Exams() {
   function resetForm() {
     setForm(empty);
     setSelected([]);
+    setVisibility({ type: 'all_students', classIds: [], studentIds: [] });
     setEditingId(null);
+    setShowValidation(false);
   }
 
   function toggle(id) {
@@ -99,19 +118,36 @@ export default function Exams() {
       min_chapters: exam.min_chapters,
       duration_minutes: exam.duration_minutes,
       marks_per_question: exam.marks_per_question,
+      total_marks: exam.total_marks || exam.total_questions * exam.marks_per_question,
+      passing_marks: exam.passing_marks || 0,
       difficulty: exam.difficulty,
       result_visible: exam.result_visible,
-      analysis_visible: exam.analysis_visible
+      analysis_visible: exam.analysis_visible,
+      allow_multiple_attempts: Boolean(exam.allow_multiple_attempts),
+      max_attempts: exam.max_attempts || 2,
+      show_correct_answers: exam.show_correct_answers ?? true,
+      randomize_questions: exam.randomize_questions ?? true,
+      randomize_options: exam.randomize_options ?? false,
+      status: exam.status || 'published'
     });
     setSelected((exam.exam_chapters || []).map(row => row.chapter_id));
+    const rows = exam.exam_visibility || [];
+    setVisibility({
+      type: exam.visibility_type || rows[0]?.visibility_type || 'all_students',
+      classIds: rows.filter(row => row.class_id).map(row => row.class_id),
+      studentIds: rows.filter(row => row.student_id).map(row => row.student_id)
+    });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   async function save(e) {
     e.preventDefault();
-    if (formIssues.length) return alert(formIssues[0]);
+    setShowValidation(true);
+    setSuccessMessage('');
+    if (formIssues.length) return;
 
     setSaving(true);
+    const wasEditing = Boolean(editingId);
     const payload = {
       ...form,
       title: form.title.trim(),
@@ -119,6 +155,18 @@ export default function Exams() {
       min_chapters: numberValue(form.min_chapters),
       duration_minutes: numberValue(form.duration_minutes),
       marks_per_question: numberValue(form.marks_per_question, 1),
+      total_marks: numberValue(form.total_marks, numberValue(form.total_questions) * numberValue(form.marks_per_question, 1)),
+      passing_marks: numberValue(form.passing_marks),
+      allow_multiple_attempts: Boolean(form.allow_multiple_attempts),
+      max_attempts: form.allow_multiple_attempts ? numberValue(form.max_attempts, 2) : null,
+      show_correct_answers: Boolean(form.show_correct_answers),
+      randomize_questions: Boolean(form.randomize_questions),
+      randomize_options: Boolean(form.randomize_options),
+      status: form.status || 'published',
+      is_published: (form.status || 'published') === 'published',
+      is_active: (form.status || 'published') !== 'archived',
+      visibility_type: profile?.role === 'main_admin' ? visibility.type : 'specific_students',
+      created_by_role: profile?.role || 'teacher',
       result_visible: form.result_visible || form.analysis_visible,
       analysis_visible: form.analysis_visible
     };
@@ -141,7 +189,21 @@ export default function Exams() {
         .insert(selected.map(chapter_id => ({ exam_id: examId, chapter_id })));
       if (chapterError) throw chapterError;
 
+      await supabase.from('exam_visibility').delete().eq('exam_id', examId);
+      if (profile?.role === 'main_admin') {
+        const visibilityRows = visibility.type === 'all_students'
+          ? [{ exam_id: examId, visibility_type: 'all_students', assigned_by: user.id }]
+          : visibility.type === 'class_wise'
+            ? visibility.classIds.map(class_id => ({ exam_id: examId, visibility_type: 'class_wise', class_id, assigned_by: user.id }))
+            : visibility.studentIds.map(student_id => ({ exam_id: examId, visibility_type: 'specific_students', student_id, assigned_by: user.id }));
+        if (visibilityRows.length) {
+          const { error: visibilityError } = await supabase.from('exam_visibility').insert(visibilityRows);
+          if (visibilityError) throw visibilityError;
+        }
+      }
+
       resetForm();
+      setSuccessMessage(wasEditing ? 'Exam updated successfully.' : 'Exam created successfully.');
       load();
     } catch (error) {
       alert(error.message);
@@ -164,6 +226,13 @@ export default function Exams() {
     const { error } = await supabase.from('exams').update(next).eq('id', exam.id);
     if (error) return alert(error.message);
     setExams(current => current.map(item => item.id === exam.id ? { ...item, ...next } : item));
+  }
+
+  function toggleMulti(key, id) {
+    setVisibility(current => ({
+      ...current,
+      [key]: current[key].includes(id) ? current[key].filter(item => item !== id) : [...current[key], id]
+    }));
   }
 
   return (
@@ -192,12 +261,32 @@ export default function Exams() {
           <label className="field">Minimum chapters<input type="number" min="1" value={form.min_chapters} onChange={e => setForm({ ...form, min_chapters: numberValue(e.target.value) })} /></label>
           <label className="field">Duration minutes<input type="number" min="1" value={form.duration_minutes} onChange={e => setForm({ ...form, duration_minutes: numberValue(e.target.value) })} /></label>
           <label className="field">Marks per question<input type="number" min="1" value={form.marks_per_question} onChange={e => setForm({ ...form, marks_per_question: numberValue(e.target.value, 1) })} /></label>
+          <label className="field">Total marks<input type="number" min="1" value={form.total_marks} onChange={e => setForm({ ...form, total_marks: numberValue(e.target.value) })} /></label>
+          <label className="field">Passing marks<input type="number" min="0" value={form.passing_marks} onChange={e => setForm({ ...form, passing_marks: numberValue(e.target.value) })} /></label>
         </div>
 
         <div className="toggle-row">
           <label><input type="checkbox" checked={form.result_visible} onChange={e => setForm({ ...form, result_visible: e.target.checked, analysis_visible: e.target.checked ? form.analysis_visible : false })} /> Publish result</label>
           <label><input type="checkbox" checked={form.analysis_visible} onChange={e => setForm({ ...form, analysis_visible: e.target.checked, result_visible: e.target.checked ? true : form.result_visible })} /> Detailed analysis</label>
+          <label><input type="checkbox" checked={form.show_correct_answers} onChange={e => setForm({ ...form, show_correct_answers: e.target.checked })} /> Show correct answers</label>
+          <label><input type="checkbox" checked={form.randomize_questions} onChange={e => setForm({ ...form, randomize_questions: e.target.checked })} /> Randomize questions</label>
+          <label><input type="checkbox" checked={form.randomize_options} onChange={e => setForm({ ...form, randomize_options: e.target.checked })} /> Randomize options</label>
+          <label><input type="checkbox" checked={form.allow_multiple_attempts} onChange={e => setForm({ ...form, allow_multiple_attempts: e.target.checked })} /> Allow multiple attempts</label>
         </div>
+        {form.allow_multiple_attempts && <div className="grid-2"><label className="field">Maximum attempts<input type="number" min="1" value={form.max_attempts} onChange={e => setForm({ ...form, max_attempts: numberValue(e.target.value, 2) })} /></label><label className="field">Status<select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}><option value="published">Published</option><option value="draft">Draft</option><option value="archived">Archived</option></select></label></div>}
+
+        {profile?.role === 'main_admin' && (
+          <section className="visibility-box">
+            <h2>Who can see this exam?</h2>
+            <div className="toggle-row">
+              <label><input type="radio" name="visibility" checked={visibility.type === 'all_students'} onChange={() => setVisibility({ type: 'all_students', classIds: [], studentIds: [] })} /> All Students</label>
+              <label><input type="radio" name="visibility" checked={visibility.type === 'class_wise'} onChange={() => setVisibility({ ...visibility, type: 'class_wise' })} /> Class-wise</label>
+              <label><input type="radio" name="visibility" checked={visibility.type === 'specific_students'} onChange={() => setVisibility({ ...visibility, type: 'specific_students' })} /> Specific Students</label>
+            </div>
+            {visibility.type === 'class_wise' && <div className="chip-list">{classes.map(item => <button type="button" className={visibility.classIds.includes(item.id) ? 'chip selected' : 'chip'} onClick={() => toggleMulti('classIds', item.id)} key={item.id}>{item.class_name} {item.section_name}</button>)}</div>}
+            {visibility.type === 'specific_students' && <div className="chip-list">{students.map(item => <button type="button" className={visibility.studentIds.includes(item.id) ? 'chip selected' : 'chip'} onClick={() => toggleMulti('studentIds', item.id)} key={item.id}>{item.full_name}<small>{item.class_name}</small></button>)}</div>}
+          </section>
+        )}
 
         <div className="section-title compact">
           <div>
@@ -219,7 +308,8 @@ export default function Exams() {
           })}
         </div>
 
-        {formIssues.length > 0 && <div className="notice">{formIssues[0]}</div>}
+        {showValidation && formIssues.length > 0 && <div className="notice">{formIssues[0]}</div>}
+        {successMessage && <div className="notice success">{successMessage}</div>}
 
         <button className="btn" disabled={saving || formIssues.length > 0}>
           <CheckCircle2 size={18} /> {saving ? 'Saving...' : editingId ? 'Update Exam' : 'Create Exam'}
@@ -243,6 +333,7 @@ export default function Exams() {
                 <span><CalendarClock size={16} /> {exam.duration_minutes} mins</span>
                 <span>{exam.result_visible ? <Eye size={16} /> : <EyeOff size={16} />} Result {exam.result_visible ? 'on' : 'off'}</span>
                 <span><BarChart3 size={16} /> Details {exam.analysis_visible ? 'on' : 'off'}</span>
+                <span>Attempts {exam.allow_multiple_attempts ? `up to ${exam.max_attempts || 'unlimited'}` : 'single'}</span>
               </div>
               <div className="publish-controls">
                 <button className={exam.result_visible ? 'mini-toggle active' : 'mini-toggle'} type="button" onClick={() => updateVisibility(exam, { result_visible: !exam.result_visible })}>{exam.result_visible ? 'Result published' : 'Publish result'}</button>
