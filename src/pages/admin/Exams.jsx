@@ -94,9 +94,16 @@ export default function Exams() {
     if (numberValue(form.min_chapters) <= 0) issues.push('Minimum chapters must be greater than 0.');
     if (selected.length < numberValue(form.min_chapters)) issues.push(`Select at least ${form.min_chapters} chapters.`);
     if (selectedStats.availableTotal < numberValue(form.total_questions)) issues.push('Selected chapters do not have enough questions.');
-    if (selectedStats.weakChapters.length) issues.push('Some selected chapters have fewer questions than the exam distribution needs.');
     return issues;
   }, [form, selected.length, selectedStats]);
+
+  const formWarnings = useMemo(() => {
+    const warnings = [];
+    if (selectedStats.weakChapters.length && selectedStats.availableTotal >= numberValue(form.total_questions)) {
+      warnings.push('Some chapters have fewer questions than the even distribution. The exam can still be created; missing questions will be filled from other selected chapters.');
+    }
+    return warnings;
+  }, [form.total_questions, selectedStats]);
 
   function resetForm() {
     setForm(empty);
@@ -144,7 +151,10 @@ export default function Exams() {
     e.preventDefault();
     setShowValidation(true);
     setSuccessMessage('');
-    if (formIssues.length) return;
+    if (formIssues.length) {
+      document.querySelector('.exam-builder .notice')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
 
     setSaving(true);
     const wasEditing = Boolean(editingId);
@@ -309,9 +319,10 @@ export default function Exams() {
         </div>
 
         {showValidation && formIssues.length > 0 && <div className="notice">{formIssues[0]}</div>}
+        {formWarnings.length > 0 && <div className="notice info">{formWarnings[0]}</div>}
         {successMessage && <div className="notice success">{successMessage}</div>}
 
-        <button className="btn" disabled={saving || formIssues.length > 0}>
+        <button className="btn" disabled={saving}>
           <CheckCircle2 size={18} /> {saving ? 'Saving...' : editingId ? 'Update Exam' : 'Create Exam'}
         </button>
       </form>
