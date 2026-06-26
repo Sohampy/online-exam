@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Eye, Users } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../contexts/AuthContext.jsx';
+import HeroHeader from '../../components/HeroHeader.jsx';
 
 export default function TeacherStudentsList() {
   const { user } = useAuth();
@@ -37,14 +38,12 @@ export default function TeacherStudentsList() {
 
   return (
     <>
-      <section className="dashboard-hero admin-hero">
-        <div>
-          <span className="eyebrow">My Students</span>
-          <h1>Students assigned to you.</h1>
-          <p>Only active students assigned by the main admin are shown here.</p>
-        </div>
-        <div className="hero-stat"><Users size={28} /><strong>{students.length}</strong><span>Students</span></div>
-      </section>
+      <HeroHeader
+        badge="My Students"
+        title="My Students"
+        singleLine
+        stats={<div className="hero-stat"><Users size={28} /><strong>{students.length}</strong><span>Students</span></div>}
+      />
 
       <div className="user-table">
         <div className="user-row header"><b>Name</b><b>Email</b><b>Class</b><b>Attempts</b><b>Latest Score</b><b>Action</b></div>

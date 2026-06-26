@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { AlertTriangle, ChevronLeft, ChevronRight, Eraser, Flag, Save } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { getAttemptQuestions, getSavedAnswers, saveAttemptAnswer, submitExam } from '../../services/examService.js';
+import LoadingScreen from '../../components/LoadingScreen.jsx';
 
 function formatTime(seconds) {
   const safe = Math.max(0, seconds);
@@ -134,7 +135,7 @@ export default function AttemptExam() {
     }
   }
 
-  if (!attempt || !active) return <p>Loading...</p>;
+  if (!attempt || !active) return <LoadingScreen label="Loading exam attempt..." />;
 
   return (
     <div className="exam-shell">
