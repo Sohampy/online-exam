@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Edit3, Search, XCircle } from 'lucide-react';
+import { CheckCircle2, Edit3, Plus, Search, XCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../contexts/AuthContext.jsx';
+import CollapsibleSection from '../../components/CollapsibleSection.jsx';
 
 const empty = { class_name: '', section_name: '', description: '' };
 
@@ -12,6 +13,7 @@ export default function Classes() {
   const [editId, setEditId] = useState(null);
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('active');
+  const [openForm, setOpenForm] = useState(false);
 
   async function load() {
     const { data } = await supabase.from('classes').select('*').order('created_at', { ascending: false });
@@ -39,6 +41,7 @@ export default function Classes() {
     if (error) return alert(error.message);
     setForm(empty);
     setEditId(null);
+    setOpenForm(false);
     load();
   }
 
@@ -50,22 +53,27 @@ export default function Classes() {
 
   return (
     <>
-      <section className="dashboard-hero permission-hero">
+      <section className="dashboard-hero permission-hero compact-hero">
         <div>
           <span className="eyebrow">Class Management</span>
-          <h1>Create and manage student classes.</h1>
-          <p>Classes are used for student profiles and admin exam visibility.</p>
         </div>
       </section>
 
-      <form className="panel question-form" onSubmit={save}>
-        <div className="grid-2">
-          <label className="field">Class name<input value={form.class_name} onChange={e => setForm({ ...form, class_name: e.target.value })} placeholder="Class 10" /></label>
-          <label className="field">Section / batch<input value={form.section_name} onChange={e => setForm({ ...form, section_name: e.target.value })} placeholder="A / Science Batch" /></label>
-        </div>
-        <label className="field">Description<textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Optional details" /></label>
-        <button className="btn"><CheckCircle2 size={18} /> {editId ? 'Update Class' : 'Add Class'}</button>
-      </form>
+      <CollapsibleSection
+        title={editId ? 'Edit Class' : 'Add Class'}
+        open={openForm || Boolean(editId)}
+        onToggle={() => setOpenForm(value => !value)}
+        action={<Plus size={18} />}
+      >
+        <form className="question-form" onSubmit={save}>
+          <div className="grid-2">
+            <label className="field">Class name<input value={form.class_name} onChange={e => setForm({ ...form, class_name: e.target.value })} placeholder="Class 10" /></label>
+            <label className="field">Section / batch<input value={form.section_name} onChange={e => setForm({ ...form, section_name: e.target.value })} placeholder="A / Science Batch" /></label>
+          </div>
+          <label className="field">Description<textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Optional details" /></label>
+          <button className="btn"><CheckCircle2 size={18} /> {editId ? 'Update Class' : 'Add Class'}</button>
+        </form>
+      </CollapsibleSection>
 
       <section className="panel management-toolbar">
         <label className="search-field"><Search size={18} /><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search classes" /></label>

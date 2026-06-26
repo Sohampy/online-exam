@@ -141,11 +141,10 @@ export default function QuestionUpload() {
 
   return (
     <>
-      <section className="dashboard-hero upload-hero">
+      <section className="dashboard-hero upload-hero compact-hero">
         <div>
           <span className="eyebrow">Question Upload</span>
-          <h1>Import questions from Excel or CSV.</h1>
-          <p>Preview and validate rows before they are added chapter-wise and subject-wise.</p>
+          <h1>Question Upload</h1>
         </div>
         <button className="btn secondary" type="button" onClick={downloadTemplate}><Download size={18} /> Template</button>
       </section>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Plus, ShieldCheck, Users } from 'lucide-react';
 import { createDetachedSupabaseClient, supabase } from '../../lib/supabaseClient';
+import CollapsibleSection from '../../components/CollapsibleSection.jsx';
 
 const emptyPerson = { full_name: '', email: '', password: '', role: 'student', class_id: '' };
 
@@ -11,6 +12,7 @@ export default function Permissions() {
   const [person, setPerson] = useState(emptyPerson);
   const [creating, setCreating] = useState(false);
   const [createMessage, setCreateMessage] = useState('');
+  const [openPersonForm, setOpenPersonForm] = useState(false);
 
   async function load() {
     const [{ data }, { data: classRows }] = await Promise.all([
@@ -85,11 +87,9 @@ export default function Permissions() {
 
   return (
     <>
-      <section className="dashboard-hero permission-hero">
+      <section className="dashboard-hero permission-hero compact-hero">
         <div>
           <span className="eyebrow">Access Settings</span>
-          <h1>Create people and set their role.</h1>
-          <p>Question management and reports are available automatically by role for Admin and Teacher.</p>
         </div>
         <div className="hero-stat">
           <ShieldCheck size={28} />
@@ -104,24 +104,19 @@ export default function Permissions() {
         <div className="card soft-card"><Users size={22} /><h3>{stats.students}</h3><p>Students</p></div>
       </div>
 
-      <form className="panel add-person-panel" onSubmit={createPerson}>
-        <div className="section-title">
-          <div>
-            <h2>Add Person</h2>
-            <p className="muted">Create a login with a temporary password. The person can change it from the Password page.</p>
+      <CollapsibleSection title="Add Person" open={openPersonForm} onToggle={() => setOpenPersonForm(value => !value)} action={<Plus size={18} />}>
+        <form className="panel add-person-panel" onSubmit={createPerson}>
+          <div className="grid-2">
+            <label className="field">Full name<input value={person.full_name} onChange={e => setPerson({ ...person, full_name: e.target.value })} placeholder="Person name" /></label>
+            <label className="field">Email<input type="email" value={person.email} onChange={e => setPerson({ ...person, email: e.target.value })} placeholder="email@example.com" /></label>
+            <label className="field">Role<select value={person.role} onChange={e => setPerson({ ...person, role: e.target.value })}><option value="student">Student</option><option value="teacher">Teacher</option><option value="main_admin">Main Admin</option></select></label>
+            {person.role === 'student' && <label className="field">Class<select value={person.class_id} onChange={e => setPerson({ ...person, class_id: e.target.value })}><option value="">Select class</option>{activeClasses.map(item => <option value={item.id} key={item.id}>{item.class_name} {item.section_name}</option>)}</select></label>}
+            <label className="field">Temporary password<input type="text" value={person.password} onChange={e => setPerson({ ...person, password: e.target.value })} placeholder="Minimum 6 characters" /></label>
           </div>
-          <Plus size={24} />
-        </div>
-        <div className="grid-2">
-          <label className="field">Full name<input value={person.full_name} onChange={e => setPerson({ ...person, full_name: e.target.value })} placeholder="Person name" /></label>
-          <label className="field">Email<input type="email" value={person.email} onChange={e => setPerson({ ...person, email: e.target.value })} placeholder="email@example.com" /></label>
-          <label className="field">Role<select value={person.role} onChange={e => setPerson({ ...person, role: e.target.value })}><option value="student">Student</option><option value="teacher">Teacher</option><option value="main_admin">Main Admin</option></select></label>
-          {person.role === 'student' && <label className="field">Class<select value={person.class_id} onChange={e => setPerson({ ...person, class_id: e.target.value })}><option value="">Select class</option>{activeClasses.map(item => <option value={item.id} key={item.id}>{item.class_name} {item.section_name}</option>)}</select></label>}
-          <label className="field">Temporary password<input type="text" value={person.password} onChange={e => setPerson({ ...person, password: e.target.value })} placeholder="Minimum 6 characters" /></label>
-        </div>
-        <button className="btn" disabled={creating}><Plus size={18} /> {creating ? 'Adding...' : 'Add Person'}</button>
-        {createMessage && <p className="muted">{createMessage}</p>}
-      </form>
+          <button className="btn" disabled={creating}><Plus size={18} /> {creating ? 'Adding...' : 'Add Person'}</button>
+          {createMessage && <p className="muted">{createMessage}</p>}
+        </form>
+      </CollapsibleSection>
 
       <div className="permission-list">
         {users.map(user => (

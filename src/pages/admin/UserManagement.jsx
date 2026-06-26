@@ -1,19 +1,27 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
+import { GraduationCap, Plus, RotateCcw, Search, Shield, Sparkles, Trash2, UsersRound, X } from 'lucide-react';
 import { createDetachedSupabaseClient, supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../contexts/AuthContext.jsx';
+import HeroHeader from '../../components/HeroHeader.jsx';
 
 const emptyPerson = { full_name: '', email: '', password: '', role: 'student', class_id: '' };
+const tileMap = [
+  { role: 'student', label: 'Add Student', description: 'Create student login', icon: UsersRound },
+  { role: 'teacher', label: 'Add Teacher', description: 'Create teacher login', icon: GraduationCap },
+  { role: 'main_admin', label: 'Add Admin', description: 'Create admin login', icon: Shield }
+];
 
 export default function UserManagement() {
   const { user: admin } = useAuth();
   const [users, setUsers] = useState([]);
   const [classes, setClasses] = useState([]);
   const [person, setPerson] = useState(emptyPerson);
+  const [activeRole, setActiveRole] = useState(null);
   const [creating, setCreating] = useState(false);
   const [createMessage, setCreateMessage] = useState('');
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('active');
+  const [classFilter, setClassFilter] = useState('all');
 
   async function load() {
     const [{ data }, { data: classRows }] = await Promise.all([
@@ -28,6 +36,18 @@ export default function UserManagement() {
     load();
   }, []);
 
+  useEffect(() => {
+    function onEsc(event) {
+      if (event.key === 'Escape') setActiveRole(null);
+    }
+    if (activeRole) document.addEventListener('keydown', onEsc);
+    return () => document.removeEventListener('keydown', onEsc);
+  }, [activeRole]);
+
+  useEffect(() => {
+    if (activeRole) setPerson({ ...emptyPerson, role: activeRole });
+  }, [activeRole]);
+
   const activeClasses = useMemo(() => [...new Map(classes.filter(item => item.is_active !== false).map(item => [item.id, item])).values()], [classes]);
 
   const filtered = useMemo(() => {
@@ -37,9 +57,11 @@ export default function UserManagement() {
       if (filter === 'active' && !active) return false;
       if (filter === 'removed' && active) return false;
       if (['student', 'teacher', 'main_admin'].includes(filter) && user.role !== filter) return false;
+      if (classFilter !== 'all' && user.role === 'student' && user.class_id !== classFilter) return false;
+      if (classFilter !== 'all' && user.role !== 'student' && filter === 'student') return false;
       return term.includes(query.toLowerCase());
     });
-  }, [filter, query, users]);
+  }, [classFilter, filter, query, users]);
 
   async function removePerson(person) {
     if (!confirm('Are you sure you want to remove this person? Their previous exam attempts, results, and records will be kept for history, but they will no longer be able to access the portal.')) return;
@@ -66,25 +88,26 @@ export default function UserManagement() {
     load();
   }
 
-  async function createPerson(e) {
+  async function createPerson(e, roleOverride = null) {
     e.preventDefault();
     setCreateMessage('');
-    if (!person.full_name.trim() || !person.email.trim() || !person.password) return setCreateMessage('Fill name, email, and temporary password.');
-    if (person.password.length < 6) return setCreateMessage('Temporary password must be at least 6 characters.');
-    if (person.role === 'student' && !person.class_id) return setCreateMessage('Please select a class for the student.');
+    const draft = { ...person, role: roleOverride || person.role };
+    if (!draft.full_name.trim() || !draft.email.trim() || !draft.password) return setCreateMessage('Fill name, email, and temporary password.');
+    if (draft.password.length < 6) return setCreateMessage('Temporary password must be at least 6 characters.');
+    if (draft.role === 'student' && !draft.class_id) return setCreateMessage('Please select a class for the student.');
 
     setCreating(true);
     const detached = createDetachedSupabaseClient();
-    const selectedClass = classes.find(item => item.id === person.class_id);
+    const selectedClass = classes.find(item => item.id === draft.class_id);
     const classLabel = selectedClass ? `${selectedClass.class_name} ${selectedClass.section_name || ''}`.trim() : '';
     const { data, error } = await detached.auth.signUp({
-      email: person.email.trim(),
-      password: person.password,
+      email: draft.email.trim(),
+      password: draft.password,
       options: {
         data: {
-          full_name: person.full_name.trim(),
-          role: person.role,
-          class_id: person.class_id,
+          full_name: draft.full_name.trim(),
+          role: draft.role,
+          class_id: draft.class_id,
           class_name: classLabel
         }
       }
@@ -99,10 +122,10 @@ export default function UserManagement() {
     if (data.user?.id) {
       const { error: profileError } = await supabase.from('profiles').upsert({
         id: data.user.id,
-        full_name: person.full_name.trim(),
-        email: person.email.trim(),
-        role: person.role,
-        class_id: person.class_id || null,
+        full_name: draft.full_name.trim(),
+        email: draft.email.trim(),
+        role: draft.role,
+        class_id: draft.class_id || null,
         class_name: classLabel || null,
         is_active: true
       });
@@ -114,6 +137,7 @@ export default function UserManagement() {
     }
 
     setPerson(emptyPerson);
+    setActiveRole(null);
     setCreateMessage('User added. Share the temporary password and ask them to change it after login.');
     await load();
     setCreating(false);
@@ -121,32 +145,20 @@ export default function UserManagement() {
 
   return (
     <>
-      <section className="dashboard-hero permission-hero">
-        <div>
-          <span className="eyebrow">User Management</span>
-          <h1>Add, remove, restore, and manage portal users.</h1>
-          <p>Create student, teacher, and admin accounts with temporary passwords.</p>
-        </div>
-      </section>
+      <HeroHeader badge="User Management" title="User Management" singleLine />
 
-      <form className="panel add-person-panel" onSubmit={createPerson}>
-        <div className="section-title">
-          <div>
-            <h2>Add User</h2>
-            <p className="muted">Create a login with a temporary password. The user can change it from Password / Settings.</p>
-          </div>
-          <Plus size={24} />
-        </div>
-        <div className="grid-2">
-          <label className="field">Full name<input value={person.full_name} onChange={e => setPerson({ ...person, full_name: e.target.value })} placeholder="User name" /></label>
-          <label className="field">Email<input type="email" value={person.email} onChange={e => setPerson({ ...person, email: e.target.value })} placeholder="email@example.com" /></label>
-          <label className="field">Role<select value={person.role} onChange={e => setPerson({ ...person, role: e.target.value, class_id: e.target.value === 'student' ? person.class_id : '' })}><option value="student">Student</option><option value="teacher">Teacher</option><option value="main_admin">Main Admin</option></select></label>
-          {person.role === 'student' && <label className="field">Class<select value={person.class_id} onChange={e => setPerson({ ...person, class_id: e.target.value })}><option value="">Select class</option>{activeClasses.map(item => <option value={item.id} key={item.id}>{item.class_name} {item.section_name}</option>)}</select></label>}
-          <label className="field">Temporary password<input type="text" value={person.password} onChange={e => setPerson({ ...person, password: e.target.value })} placeholder="Minimum 6 characters" /></label>
-        </div>
-        <button className="btn" disabled={creating}><Plus size={18} /> {creating ? 'Adding...' : 'Add User'}</button>
-        {createMessage && <p className="muted">{createMessage}</p>}
-      </form>
+      <section className="action-tiles">
+        {tileMap.map(tile => {
+          const Icon = tile.icon;
+          return (
+            <button key={tile.role} type="button" className="action-tile" onClick={() => setActiveRole(tile.role)}>
+              <span><Icon size={22} /></span>
+              <b>{tile.label}</b>
+              <small>{tile.description}</small>
+            </button>
+          );
+        })}
+      </section>
 
       <div className="panel management-toolbar">
         <label className="search-field"><Search size={18} /><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search name, email, role" /></label>
@@ -157,6 +169,10 @@ export default function UserManagement() {
           <option value="student">Students</option>
           <option value="teacher">Teachers</option>
           <option value="main_admin">Admins</option>
+        </select>
+        <select value={classFilter} onChange={e => setClassFilter(e.target.value)}>
+          <option value="all">All Classes</option>
+          {classes.map(item => <option value={item.id} key={item.id}>{item.class_name} {item.section_name}</option>)}
         </select>
       </div>
 
@@ -184,6 +200,30 @@ export default function UserManagement() {
           );
         })}
       </div>
+
+      {activeRole && (
+        <div className="modal-backdrop" role="presentation" onClick={() => setActiveRole(null)}>
+          <div className="modal-card" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <div>
+                <span className="eyebrow">User Creation</span>
+                <h2>{tileMap.find(tile => tile.role === activeRole)?.label}</h2>
+              </div>
+              <button type="button" className="icon-btn" onClick={() => setActiveRole(null)} aria-label="Close modal"><X size={18} /></button>
+            </div>
+            <form className="modal-form" onSubmit={e => createPerson(e, activeRole)}>
+              <label className="field">Full name<input value={person.full_name} onChange={e => setPerson({ ...person, full_name: e.target.value })} placeholder="User name" autoFocus /></label>
+              <label className="field">Email<input type="email" value={person.email} onChange={e => setPerson({ ...person, email: e.target.value })} placeholder="email@example.com" /></label>
+              {activeRole === 'student' && <label className="field">Class<select value={person.class_id} onChange={e => setPerson({ ...person, class_id: e.target.value })}><option value="">Select class</option>{activeClasses.map(item => <option value={item.id} key={item.id}>{item.class_name} {item.section_name}</option>)}</select></label>}
+              <label className="field">Temporary password<input type="text" value={person.password} onChange={e => setPerson({ ...person, password: e.target.value })} placeholder="Minimum 6 characters" /></label>
+              <div className="modal-actions">
+                <button className="btn secondary" type="button" onClick={() => setActiveRole(null)}>Cancel</button>
+                <button className="btn" disabled={creating}><Sparkles size={18} /> {creating ? 'Saving...' : 'Save User'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </>
   );
 }
