@@ -2,15 +2,17 @@ import { useEffect, useMemo, useState } from 'react';
 import { BarChart3, CalendarClock, CheckCircle2, Edit3, Eye, EyeOff, Layers, Plus, Trash2, X } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../contexts/AuthContext.jsx';
+import CollapsibleSection from '../../components/CollapsibleSection.jsx';
+import HeroHeader from '../../components/HeroHeader.jsx';
 
 const empty = {
   title: '',
-  total_questions: 20,
-  min_chapters: 5,
-  duration_minutes: 30,
-  marks_per_question: 1,
-  total_marks: 20,
-  passing_marks: 0,
+  total_questions: '',
+  min_chapters: '',
+  duration_minutes: '',
+  marks_per_question: '',
+  total_marks: '',
+  passing_marks: '',
   difficulty: 'mixed',
   result_visible: false,
   analysis_visible: false,
@@ -41,6 +43,7 @@ export default function Exams() {
   const [saving, setSaving] = useState(false);
   const [showValidation, setShowValidation] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const [openForm, setOpenForm] = useState(false);
 
   async function load() {
     const [{ data: c }, { data: q }, { data: e }, { data: classRows }, { data: studentRows }] = await Promise.all([
@@ -111,6 +114,7 @@ export default function Exams() {
     setVisibility({ type: 'all_students', classIds: [], studentIds: [] });
     setEditingId(null);
     setShowValidation(false);
+    setOpenForm(false);
   }
 
   function toggle(id) {
@@ -247,32 +251,26 @@ export default function Exams() {
 
   return (
     <>
-      <div className="page-heading">
-        <div>
-          <h1>Exam Management</h1>
-          <p className="muted">Build exams from available chapter questions and control result visibility.</p>
-        </div>
-        <button className="btn secondary" type="button" onClick={resetForm}><Plus size={18} /> New Exam</button>
-      </div>
+      <HeroHeader
+        badge="Exam Management"
+        title="Exam Management"
+        singleLine
+        actions={<button className="btn secondary" type="button" onClick={resetForm}><Plus size={18} /> New Exam</button>}
+      />
 
+      <CollapsibleSection title={editingId ? 'Edit Exam' : 'Create Exam'} open={openForm || Boolean(editingId)} onToggle={() => setOpenForm(value => !value)} action={editingId ? <X size={18} /> : <Plus size={18} />}>
       <form className="panel exam-builder" onSubmit={save}>
-        <div className="section-title">
-          <div>
-            <h2>{editingId ? 'Edit exam' : 'Create exam'}</h2>
-            <p className="muted">{selectedStats.availableTotal} matching questions available in selected chapters.</p>
-          </div>
-          {editingId && <button className="icon-btn" type="button" onClick={resetForm} title="Cancel edit"><X size={18} /></button>}
-        </div>
+        {editingId && <button className="icon-btn" type="button" onClick={resetForm} title="Cancel edit"><X size={18} /></button>}
 
         <div className="grid-2">
           <label className="field">Title<input placeholder="Exam title" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} /></label>
           <label className="field">Difficulty<select value={form.difficulty} onChange={e => setForm({ ...form, difficulty: e.target.value })}><option value="mixed">Mixed</option><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option></select></label>
-          <label className="field">Total questions<input type="number" min="1" value={form.total_questions} onChange={e => setForm({ ...form, total_questions: numberValue(e.target.value) })} /></label>
-          <label className="field">Minimum chapters<input type="number" min="1" value={form.min_chapters} onChange={e => setForm({ ...form, min_chapters: numberValue(e.target.value) })} /></label>
-          <label className="field">Duration minutes<input type="number" min="1" value={form.duration_minutes} onChange={e => setForm({ ...form, duration_minutes: numberValue(e.target.value) })} /></label>
-          <label className="field">Marks per question<input type="number" min="1" value={form.marks_per_question} onChange={e => setForm({ ...form, marks_per_question: numberValue(e.target.value, 1) })} /></label>
-          <label className="field">Total marks<input type="number" min="1" value={form.total_marks} onChange={e => setForm({ ...form, total_marks: numberValue(e.target.value) })} /></label>
-          <label className="field">Passing marks<input type="number" min="0" value={form.passing_marks} onChange={e => setForm({ ...form, passing_marks: numberValue(e.target.value) })} /></label>
+          <label className="field">Total questions<input type="number" min="1" placeholder="20" value={form.total_questions} onChange={e => setForm({ ...form, total_questions: e.target.value })} /></label>
+          <label className="field">Minimum chapters<input type="number" min="1" placeholder="5" value={form.min_chapters} onChange={e => setForm({ ...form, min_chapters: e.target.value })} /></label>
+          <label className="field">Duration minutes<input type="number" min="1" placeholder="30" value={form.duration_minutes} onChange={e => setForm({ ...form, duration_minutes: e.target.value })} /></label>
+          <label className="field">Marks per question<input type="number" min="1" placeholder="1" value={form.marks_per_question} onChange={e => setForm({ ...form, marks_per_question: e.target.value })} /></label>
+          <label className="field">Total marks<input type="number" min="1" placeholder="20" value={form.total_marks} onChange={e => setForm({ ...form, total_marks: e.target.value })} /></label>
+          <label className="field">Passing marks<input type="number" min="0" placeholder="10" value={form.passing_marks} onChange={e => setForm({ ...form, passing_marks: e.target.value })} /></label>
         </div>
 
         <div className="toggle-row">
@@ -283,7 +281,7 @@ export default function Exams() {
           <label><input type="checkbox" checked={form.randomize_options} onChange={e => setForm({ ...form, randomize_options: e.target.checked })} /> Randomize options</label>
           <label><input type="checkbox" checked={form.allow_multiple_attempts} onChange={e => setForm({ ...form, allow_multiple_attempts: e.target.checked })} /> Allow multiple attempts</label>
         </div>
-        {form.allow_multiple_attempts && <div className="grid-2"><label className="field">Maximum attempts<input type="number" min="1" value={form.max_attempts} onChange={e => setForm({ ...form, max_attempts: numberValue(e.target.value, 2) })} /></label><label className="field">Status<select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}><option value="published">Published</option><option value="draft">Draft</option><option value="archived">Archived</option></select></label></div>}
+        {form.allow_multiple_attempts && <div className="grid-2"><label className="field">Maximum attempts<input type="number" min="1" placeholder="e.g. 2" value={form.max_attempts} onChange={e => setForm({ ...form, max_attempts: e.target.value })} /></label><label className="field">Status<select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}><option value="published">Published</option><option value="draft">Draft</option><option value="archived">Archived</option></select></label></div>}
 
         {profile?.role === 'main_admin' && (
           <section className="visibility-box">
@@ -298,12 +296,7 @@ export default function Exams() {
           </section>
         )}
 
-        <div className="section-title compact">
-          <div>
-            <h2>Select Chapters</h2>
-            <p className="muted">Each selected chapter should have at least {selectedStats.maxNeededPerChapter || 0} matching questions.</p>
-          </div>
-        </div>
+        <div className="section-title compact"><div><h2>Select Chapters</h2></div></div>
 
         <div className="chapter-grid">
           {chapters.map(chapter => {
@@ -326,6 +319,7 @@ export default function Exams() {
           <CheckCircle2 size={18} /> {saving ? 'Saving...' : editingId ? 'Update Exam' : 'Create Exam'}
         </button>
       </form>
+      </CollapsibleSection>
 
       <div className="exam-list">
         {exams.map(exam => {

@@ -1,11 +1,15 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { BarChart3, ClipboardCheck, ClipboardList, FileQuestion, GraduationCap, Home, Link2, LogOut, RotateCcw, Settings, Upload, UserCog, Users } from 'lucide-react';
+import { BarChart3, BookOpenCheck, ClipboardCheck, ClipboardList, FileQuestion, GraduationCap, Home, Link2, Menu, RotateCcw, Upload, UserCog, Users, ChevronLeft } from 'lucide-react';
+import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext.jsx';
+import GlobalHeader from './GlobalHeader.jsx';
 
 export default function AppLayout() {
   const { profile, logout } = useAuth();
   const navigate = useNavigate();
   const role = profile?.role;
+  const [collapsed, setCollapsed] = useState(false);
+  const institutionName = 'BrainzHive';
 
   const groups = role === 'main_admin'
     ? [
@@ -26,31 +30,30 @@ export default function AppLayout() {
     navigate('/login');
   }
 
-  return <div className="layout">
+  return <div className={collapsed ? 'layout sidebar-collapsed' : 'layout'}>
     <aside className="sidebar">
-      <div className="brand">ExamPortal</div>
-      <div className="account-card">
-        <span>{profile?.full_name?.slice(0, 1)?.toUpperCase() || 'U'}</span>
-        <div>
-          <b>{profile?.full_name || 'User'}</b>
-          <small>{profile?.email}</small>
+      <div className="sidebar-brand">
+        <span className="sidebar-mark"><BookOpenCheck size={18} /></span>
+        <div className="sidebar-brand-text">
+          <b>{institutionName}</b>
+          <small>Online Examination Portal</small>
         </div>
       </div>
-      <p className="role-pill">{role?.replace('_', ' ')}</p>
+      <button className="sidebar-toggle" type="button" onClick={() => setCollapsed(value => !value)} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
+        {collapsed ? <Menu size={18} /> : <ChevronLeft size={18} />}
+      </button>
       <nav className="sidebar-nav">
         {groups.map(([group, links]) => (
           <div className="nav-group" key={group}>
             <small>{group}</small>
-            {links.map(([to, label, Icon]) => <NavLink key={to} to={to} end className={({isActive}) => isActive ? 'nav active' : 'nav'}><Icon size={18}/>{label}</NavLink>)}
+            {links.map(([to, label, Icon]) => <NavLink key={to} to={to} end title={collapsed ? label : undefined} className={({isActive}) => isActive ? 'nav active' : 'nav'}><Icon size={18}/><span>{label}</span></NavLink>)}
           </div>
         ))}
-        <div className="nav-group settings-group">
-          <small>Account</small>
-          <NavLink to="/account/password" className={({isActive}) => isActive ? 'nav active' : 'nav'}><Settings size={18}/> Password / Settings</NavLink>
-        </div>
       </nav>
-      <button className="nav logout" onClick={handleLogout}><LogOut size={18}/> Logout</button>
     </aside>
-    <main className="content"><Outlet /></main>
+    <section className="app-frame">
+      <GlobalHeader profile={profile} onLogout={handleLogout} />
+      <main className="content"><Outlet /></main>
+    </section>
   </div>;
 }

@@ -4,6 +4,7 @@ import { AlertCircle, CheckCircle2, Clock3, FileText, PlayCircle } from 'lucide-
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { startExam } from '../../services/examService.js';
+import LoadingScreen from '../../components/LoadingScreen.jsx';
 
 export default function Instructions() {
   const { examId } = useParams();
@@ -44,7 +45,7 @@ export default function Instructions() {
     }
   }
 
-  if (!exam) return <p>Loading...</p>;
+  if (!exam) return <LoadingScreen label="Loading exam instructions..." />;
 
   const isSubmitted = attempt?.status === 'submitted';
   const isInProgress = attempt?.status === 'in_progress';

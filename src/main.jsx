@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import AppLayout from './components/AppLayout.jsx';
+import FormEditingEnhancer from './components/FormEditingEnhancer.jsx';
 import Landing from './pages/public/Landing.jsx';
 import Login from './pages/public/Login.jsx';
 import Register from './pages/public/Register.jsx';
@@ -25,6 +26,7 @@ import Instructions from './pages/student/Instructions.jsx';
 import AttemptExam from './pages/student/AttemptExam.jsx';
 import Result from './pages/student/Result.jsx';
 import ChangePassword from './pages/account/ChangePassword.jsx';
+import Profile from './pages/account/Profile.jsx';
 import QuestionUpload from './pages/shared/QuestionUpload.jsx';
 import './styles/global.css';
 
@@ -32,6 +34,7 @@ createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>
       <AuthProvider>
+        <FormEditingEnhancer />
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
@@ -71,6 +74,7 @@ createRoot(document.getElementById('root')).render(
           </Route>
 
           <Route path="/account" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+            <Route path="profile" element={<Profile />} />
             <Route path="password" element={<ChangePassword />} />
           </Route>
 

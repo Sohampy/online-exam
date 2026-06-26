@@ -3,6 +3,8 @@ import { Link, useParams } from 'react-router-dom';
 import { AlertCircle, Award, BarChart3, CheckCircle2, EyeOff, Home, Target, XCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { getChapterWisePerformance, getQuestionWisePerformance } from '../../services/examService.js';
+import LoadingScreen from '../../components/LoadingScreen.jsx';
+import HeroHeader from '../../components/HeroHeader.jsx';
 
 function formatDuration(seconds) {
   const safe = Number(seconds || 0);
@@ -44,7 +46,7 @@ export default function Result() {
     load();
   }, [attemptId]);
 
-  if (!attempt) return <p>Loading...</p>;
+  if (!attempt) return <LoadingScreen label="Loading result..." />;
 
   if (!attempt.exams?.result_visible) {
     return (
@@ -61,18 +63,12 @@ export default function Result() {
 
   return (
     <>
-      <section className="dashboard-hero result-hero">
-        <div>
-          <span className="eyebrow">Result Published</span>
-          <h1>{attempt.exams?.title || 'Exam Result'}</h1>
-          <p>Your submitted score and performance breakdown are ready.</p>
-        </div>
-        <div className="hero-stat">
-          <Award size={28} />
-          <strong>{attempt.accuracy}%</strong>
-          <span>Accuracy</span>
-        </div>
-      </section>
+      <HeroHeader
+        badge="Result Published"
+        title={attempt.exams?.title || 'Exam Result'}
+        singleLine
+        stats={<div className="hero-stat"><Award size={28} /><strong>{attempt.accuracy}%</strong><span>Accuracy</span></div>}
+      />
 
       <div className="cards stat-strip">
         <div className="card soft-card"><Award size={22} /><h3>{attempt.total_score}</h3><p>Total Score</p></div>
@@ -94,7 +90,7 @@ export default function Result() {
             <BarChart3 size={24} />
           </div>
           {analysisLoading ? (
-            <p className="muted">Loading detailed analysis...</p>
+            <p className="loading-inline">Loading detailed analysis...</p>
           ) : analysisError ? (
             <div className="notice"><AlertCircle size={18} /> Could not load detailed analysis: {analysisError}</div>
           ) : chapter.length ? (

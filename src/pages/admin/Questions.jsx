@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Edit3, Plus, Search, Trash2, X } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../contexts/AuthContext.jsx';
+import CollapsibleSection from '../../components/CollapsibleSection.jsx';
+import HeroHeader from '../../components/HeroHeader.jsx';
 
 const empty = { chapter_id: '', question_text: '', option_a: '', option_b: '', option_c: '', option_d: '', correct_option: 'A', difficulty: 'medium', marks: 1, explanation: '' };
 const defaultFilters = { q: '', subject: 'all', chapter: 'all', difficulty: 'all', createdBy: 'all' };
@@ -17,6 +19,7 @@ export default function Questions() {
   const [selected, setSelected] = useState([]);
   const [filters, setFilters] = useState(defaultFilters);
   const [visibleLimit, setVisibleLimit] = useState(25);
+  const [openForm, setOpenForm] = useState(false);
 
   async function load() {
     setLoadError('');
@@ -209,16 +212,15 @@ export default function Questions() {
 
   return (
     <>
-      <div className="page-heading">
-        <div>
-          <h1>Manage Questions</h1>
-          <p className="muted">Search, filter, and permanently delete unused uploaded questions.</p>
-        </div>
-        {edit && <button className="btn secondary" type="button" onClick={() => { setEdit(null); setForm(empty); }}><X size={18} /> Cancel Edit</button>}
-      </div>
+      <HeroHeader
+        badge="Manage Questions"
+        title="Manage Questions"
+        singleLine
+        actions={edit && <button className="btn secondary" type="button" onClick={() => { setEdit(null); setForm(empty); }}><X size={18} /> Cancel Edit</button>}
+      />
 
-      <form className="panel question-form" onSubmit={save}>
-        <div className="section-title"><div><h2>{edit ? 'Edit Question' : 'Add Question'}</h2><p className="muted">Questions already used in attempts cannot be permanently deleted from here.</p></div><Plus size={24} /></div>
+      <CollapsibleSection title={edit ? 'Edit Question' : 'Add Question'} open={openForm || Boolean(edit)} onToggle={() => setOpenForm(value => !value)} action={<Plus size={18} />}>
+      <form className="question-form" onSubmit={save}>
         <div className="grid-2">
           <label className="field">Chapter<select value={form.chapter_id} onChange={e => setForm({ ...form, chapter_id: e.target.value })}><option value="">Select chapter</option>{chapters.map(c => <option value={c.id} key={c.id}>{c.subject} - {c.chapter_name}</option>)}</select></label>
           <label className="field">Difficulty<select value={form.difficulty} onChange={e => setForm({ ...form, difficulty: e.target.value })}><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option></select></label>
@@ -232,6 +234,7 @@ export default function Questions() {
         <label className="field">Explanation<textarea placeholder="Explain the correct answer" value={form.explanation || ''} onChange={e => setForm({ ...form, explanation: e.target.value })} /></label>
         <button className="btn"><CheckCircle2 size={18} /> {edit ? 'Update Question' : 'Add Question'}</button>
       </form>
+      </CollapsibleSection>
 
       <section className="panel management-toolbar question-toolbar">
         <label className="search-field"><Search size={18} /><input value={filters.q} onChange={e => setFilters({ ...filters, q: e.target.value })} placeholder="Search questions" /></label>
@@ -246,11 +249,7 @@ export default function Questions() {
       <section className="panel chapter-delete-panel">
         <div>
           <h2>Delete Chapter Questions</h2>
-          <p className="muted">
-            {selectedChapter
-              ? `${selectedChapterQuestionCount} manageable questions found in ${selectedChapter.subject} - ${selectedChapter.chapter_name}.`
-              : ''}
-          </p>
+          {selectedChapter ? <p className="muted">{selectedChapterQuestionCount} manageable questions found in {selectedChapter.subject} - {selectedChapter.chapter_name}.</p> : null}
         </div>
         <div className="chapter-delete-actions">
           <button className="btn secondary danger-text" type="button" onClick={deleteChapterQuestions} disabled={filters.chapter === 'all' || selectedChapterQuestionCount === 0}>

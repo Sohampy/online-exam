@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { ArrowRight, CheckCircle2, Clock3, FileText, PlayCircle, RotateCcw, Trophy } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Clock3, FileText, PlayCircle, RotateCcw } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../contexts/AuthContext.jsx';
+import LoadingScreen from '../../components/LoadingScreen.jsx';
+import HeroHeader from '../../components/HeroHeader.jsx';
 
 function formatDate(value) {
   if (!value) return '';
@@ -78,27 +80,29 @@ export default function StudentDashboard() {
     if (view === 'exams') return ['Available Exams', 'Start new exams, resume active exams, or retake allowed exams.'];
     if (view === 'attempts') return ['My Attempts', 'Track every exam attempt separately.'];
     if (view === 'results') return ['My Results', 'Open submitted attempts and review your performance.'];
-    return ['Your exams, attempts, and scores.', 'Start new exams, resume active attempts, retake allowed exams, and review detailed summaries.'];
+    return ['Student Dashboard', 'Start new exams, resume active attempts, retake allowed exams, and review detailed summaries.'];
   }
 
-  if (loading) return <p>Loading...</p>;
-  const [title, subtitle] = titleForView();
-
+  if (loading) return <LoadingScreen label="Loading student dashboard..." />;
   return (
     <>
-      <section className="dashboard-hero student-hero">
-        <div>
-          <span className="eyebrow">Student Workspace</span>
-          <h1>{title}</h1>
-          <p>{subtitle}</p>
-        </div>
-        <div className="hero-stat"><Trophy size={28} /><strong>{stats.bestAccuracy}%</strong><span>Best accuracy</span></div>
-      </section>
+      <HeroHeader
+        badge="Student Workspace"
+        title="Student Dashboard"
+        singleLine
+        actions={(
+          <>
+          <Link className="btn" to="/student/exams"><PlayCircle size={18} /> Available Exams</Link>
+          <Link className="btn secondary" to="/student/attempts"><RotateCcw size={18} /> My Attempts</Link>
+          <Link className="btn secondary" to="/student/results"><CheckCircle2 size={18} /> My Results</Link>
+          </>
+        )}
+      />
 
       <div className="cards stat-strip">
-        <div className="card soft-card"><h3>{exams.length}</h3><p>Available exams</p></div>
-        <div className="card soft-card"><h3>{stats.inProgress}</h3><p>In progress</p></div>
-        <div className="card soft-card"><h3>{stats.completed}</h3><p>Completed attempts</p></div>
+        <Link className="card soft-card clickable-card" to="/student/exams" aria-label="Open available exams"><h3>{exams.length}</h3><p>Available exams</p></Link>
+        <Link className="card soft-card clickable-card" to="/student/attempts" aria-label="Open previous attempts"><h3>{attempts.length}</h3><p>My attempts</p></Link>
+        <Link className="card soft-card clickable-card" to="/student/results" aria-label="Open my results"><h3>{stats.completed}</h3><p>My results</p></Link>
       </div>
 
       {view === 'attempts' && (
