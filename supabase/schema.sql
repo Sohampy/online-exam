@@ -56,15 +56,35 @@ create table if not exists public.exam_chapters (
 create table if not exists public.student_attempts (
   id uuid primary key default gen_random_uuid(),
   student_id uuid not null references public.profiles(id) on delete cascade,
-  exam_id uuid not null references public.exams(id) on delete cascade,
+  exam_id uuid references public.exams(id) on delete cascade,
   started_at timestamptz default now(),
   submitted_at timestamptz,
   status text not null check (status in ('in_progress','submitted')) default 'in_progress',
   total_score numeric default 0,
   correct_count int default 0,
   incorrect_count int default 0,
-  accuracy numeric default 0
+  accuracy numeric default 0,
+  attempt_type text not null default 'exam' check (attempt_type in ('exam','practice')),
+  practice_subject text,
+  practice_chapter_ids uuid[] default '{}',
+  practice_question_count int,
+  practice_difficulty text default 'mixed',
+  practice_signature text,
+  practice_duration_minutes int default 0
 );
+
+-- Keep existing databases in sync when this schema is re-run on an older project.
+alter table if exists public.student_attempts alter column exam_id drop not null;
+alter table if exists public.student_attempts add column if not exists attempt_type text not null default 'exam' check (attempt_type in ('exam','practice'));
+alter table if exists public.student_attempts add column if not exists attempt_number int not null default 1;
+alter table if exists public.student_attempts add column if not exists percentage numeric default 0;
+alter table if exists public.student_attempts add column if not exists time_taken_seconds int default 0;
+alter table if exists public.student_attempts add column if not exists practice_subject text;
+alter table if exists public.student_attempts add column if not exists practice_chapter_ids uuid[] default '{}';
+alter table if exists public.student_attempts add column if not exists practice_question_count int;
+alter table if exists public.student_attempts add column if not exists practice_difficulty text default 'mixed';
+alter table if exists public.student_attempts add column if not exists practice_signature text;
+alter table if exists public.student_attempts add column if not exists practice_duration_minutes int default 0;
 
 create table if not exists public.exam_questions (
   id uuid primary key default gen_random_uuid(),
@@ -125,16 +145,25 @@ alter table public.exam_questions enable row level security;
 alter table public.student_answers enable row level security;
 
 -- Profiles
+drop policy if exists "profile self read" on public.profiles;
+drop policy if exists "profile self insert" on public.profiles;
+drop policy if exists "admin update profiles" on public.profiles;
+drop policy if exists "self update basic profile" on public.profiles;
 create policy "profile self read" on public.profiles for select using (id = auth.uid() or public.is_main_admin() or public.can_teacher_view_reports());
 create policy "profile self insert" on public.profiles for insert with check (id = auth.uid());
 create policy "admin update profiles" on public.profiles for update using (public.is_main_admin()) with check (public.is_main_admin());
 create policy "self update basic profile" on public.profiles for update using (id = auth.uid()) with check (id = auth.uid());
 
 -- Chapters
+drop policy if exists "chapters readable authenticated" on public.chapters;
+drop policy if exists "admin manage chapters" on public.chapters;
 create policy "chapters readable authenticated" on public.chapters for select to authenticated using (true);
 create policy "admin manage chapters" on public.chapters for all using (public.is_main_admin()) with check (public.is_main_admin());
 
 -- Questions: students can read only assigned questions after attempt is created. They do not need correct_option in UI; frontend strips it.
+drop policy if exists "admin teacher read questions" on public.questions;
+drop policy if exists "student read own attempt questions" on public.questions;
+drop policy if exists "admin teacher manage questions" on public.questions;
 create policy "admin teacher read questions" on public.questions for select using (public.is_main_admin() or public.can_teacher_manage_questions() or public.my_role()='teacher');
 create policy "student read own attempt questions" on public.questions for select using (
   exists(select 1 from public.exam_questions eq join public.student_attempts sa on sa.id=eq.attempt_id where eq.question_id=questions.id and sa.student_id=auth.uid())
@@ -142,22 +171,40 @@ create policy "student read own attempt questions" on public.questions for selec
 create policy "admin teacher manage questions" on public.questions for all using (public.is_main_admin() or public.can_teacher_manage_questions()) with check (public.is_main_admin() or public.can_teacher_manage_questions());
 
 -- Exams
+drop policy if exists "exams readable authenticated" on public.exams;
+drop policy if exists "admin manage exams" on public.exams;
 create policy "exams readable authenticated" on public.exams for select to authenticated using (true);
 create policy "admin manage exams" on public.exams for all using (public.is_main_admin()) with check (public.is_main_admin());
 
 -- Exam chapters
+drop policy if exists "exam chapters readable" on public.exam_chapters;
+drop policy if exists "admin manage exam chapters" on public.exam_chapters;
 create policy "exam chapters readable" on public.exam_chapters for select to authenticated using (true);
 create policy "admin manage exam chapters" on public.exam_chapters for all using (public.is_main_admin()) with check (public.is_main_admin());
 
 -- Attempts
-create policy "students manage own attempts" on public.student_attempts for all using (student_id = auth.uid() or public.is_main_admin() or public.can_teacher_view_reports()) with check (student_id = auth.uid() or public.is_main_admin());
+drop policy if exists "students manage own attempts" on public.student_attempts;
+create policy "students manage own attempts" on public.student_attempts for all using (
+  student_id = auth.uid()
+  or public.is_main_admin()
+  or (
+    public.can_teacher_view_reports()
+    and (
+      attempt_type = 'practice'
+      or exists(select 1 from public.exams e where e.id = student_attempts.exam_id and e.created_by = auth.uid())
+    )
+  )
+) with check (student_id = auth.uid() or public.is_main_admin());
 
 -- Exam questions
-create policy "students read own exam_questions" on public.exam_questions for select using (exists(select 1 from public.student_attempts sa where sa.id=attempt_id and (sa.student_id=auth.uid() or public.is_main_admin() or public.can_teacher_view_reports())));
+drop policy if exists "students read own exam_questions" on public.exam_questions;
+drop policy if exists "students insert own exam_questions" on public.exam_questions;
+create policy "students read own exam_questions" on public.exam_questions for select using (exists(select 1 from public.student_attempts sa where sa.id=attempt_id and (sa.student_id=auth.uid() or public.is_main_admin() or (public.can_teacher_view_reports() and (sa.attempt_type='practice' or exists(select 1 from public.exams e where e.id=sa.exam_id and e.created_by=auth.uid()))))));
 create policy "students insert own exam_questions" on public.exam_questions for insert with check (exists(select 1 from public.student_attempts sa where sa.id=attempt_id and sa.student_id=auth.uid() and sa.status='in_progress'));
 
 -- Student answers
-create policy "students manage own answers" on public.student_answers for all using (exists(select 1 from public.student_attempts sa where sa.id=attempt_id and (sa.student_id=auth.uid() or public.is_main_admin() or public.can_teacher_view_reports()))) with check (exists(select 1 from public.student_attempts sa where sa.id=attempt_id and sa.student_id=auth.uid() and sa.status='in_progress'));
+drop policy if exists "students manage own answers" on public.student_answers;
+create policy "students manage own answers" on public.student_answers for all using (exists(select 1 from public.student_attempts sa where sa.id=attempt_id and (sa.student_id=auth.uid() or public.is_main_admin() or (public.can_teacher_view_reports() and (sa.attempt_type='practice' or exists(select 1 from public.exams e where e.id=sa.exam_id and e.created_by=auth.uid())))))) with check (exists(select 1 from public.student_attempts sa where sa.id=attempt_id and sa.student_id=auth.uid() and sa.status='in_progress'));
 
 -- Starts an exam without exposing the full question bank to students.
 create or replace function public.start_exam(p_exam_id uuid)
@@ -269,7 +316,7 @@ begin
       from public.questions
       where chapter_id = any(v_chapter_ids)
         and (v_exam.difficulty = 'mixed' or difficulty = v_exam.difficulty)
-        and not id = any(v_final_question_ids)
+        and not (id = any(v_final_question_ids))
       order by random()
       limit v_missing
     ) backup;
@@ -281,8 +328,8 @@ begin
     raise exception 'Not enough questions are available for this exam.';
   end if;
 
-  insert into public.student_attempts(student_id, exam_id, status)
-  values (v_student, p_exam_id, 'in_progress')
+  insert into public.student_attempts(student_id, exam_id, attempt_type, status)
+  values (v_student, p_exam_id, 'exam', 'in_progress')
   returning id into v_attempt_id;
 
   insert into public.exam_questions(attempt_id, question_id, question_order)

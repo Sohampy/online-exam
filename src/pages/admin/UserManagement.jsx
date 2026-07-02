@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { GraduationCap, Plus, RotateCcw, Search, Shield, Sparkles, Trash2, UsersRound, X } from 'lucide-react';
+import { CheckCircle2, GraduationCap, Pencil, Plus, RotateCcw, Search, Shield, Sparkles, Trash2, UsersRound, X } from 'lucide-react';
 import { createDetachedSupabaseClient, supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import HeroHeader from '../../components/HeroHeader.jsx';
+import { notify } from '../../components/Notifications.jsx';
 
 const emptyPerson = { full_name: '', email: '', password: '', role: 'student', class_id: '' };
 const tileMap = [
@@ -22,6 +23,9 @@ export default function UserManagement() {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('active');
   const [classFilter, setClassFilter] = useState('all');
+  const [editingUser, setEditingUser] = useState(null);
+  const [editDraft, setEditDraft] = useState({ full_name: '', email: '', role: 'student', class_id: '', is_active: true });
+  const [savingEdit, setSavingEdit] = useState(false);
 
   async function load() {
     const [{ data }, { data: classRows }] = await Promise.all([
@@ -48,6 +52,18 @@ export default function UserManagement() {
     if (activeRole) setPerson({ ...emptyPerson, role: activeRole });
   }, [activeRole]);
 
+  useEffect(() => {
+    if (editingUser) {
+      setEditDraft({
+        full_name: editingUser.full_name || '',
+        email: editingUser.email || '',
+        role: editingUser.role || 'student',
+        class_id: editingUser.class_id || '',
+        is_active: editingUser.is_active !== false
+      });
+    }
+  }, [editingUser]);
+
   const activeClasses = useMemo(() => [...new Map(classes.filter(item => item.is_active !== false).map(item => [item.id, item])).values()], [classes]);
 
   const filtered = useMemo(() => {
@@ -71,20 +87,57 @@ export default function UserManagement() {
       removed_by: admin.id,
       removal_reason: 'Removed by admin'
     }).eq('id', person.id);
-    if (error) return alert(error.message);
+    if (error) return notify({ type: 'error', title: 'Could not remove user', message: error.message });
     await supabase.from('teacher_students').update({ status: 'inactive' }).or(`teacher_id.eq.${person.id},student_id.eq.${person.id}`);
+    notify({ type: 'success', title: 'User removed' });
     load();
   }
 
   async function restorePerson(person) {
     const { error } = await supabase.from('profiles').update({ is_active: true }).eq('id', person.id);
-    if (error) return alert(error.message);
+    if (error) return notify({ type: 'error', title: 'Could not restore user', message: error.message });
+    notify({ type: 'success', title: 'User restored' });
     load();
   }
 
   async function updateRole(person, role) {
     const { error } = await supabase.from('profiles').update({ role }).eq('id', person.id);
-    if (error) return alert(error.message);
+    if (error) return notify({ type: 'error', title: 'Could not update role', message: error.message });
+    notify({ type: 'success', title: 'Role updated' });
+    load();
+  }
+
+  function startEditUser(person) {
+    setEditingUser(person);
+  }
+
+  function closeEditUser() {
+    setEditingUser(null);
+    setEditDraft({ full_name: '', email: '', role: 'student', class_id: '', is_active: true });
+    setSavingEdit(false);
+  }
+
+  async function saveEditUser(e) {
+    e.preventDefault();
+    if (!editingUser) return;
+    if (!editDraft.full_name.trim() || !editDraft.email.trim()) return notify({ type: 'warning', title: 'Missing details', message: 'Name and email are required.' });
+
+    setSavingEdit(true);
+    const selectedClass = classes.find(item => item.id === editDraft.class_id);
+    const classLabel = selectedClass ? `${selectedClass.class_name} ${selectedClass.section_name || ''}`.trim() : '';
+    const payload = {
+      full_name: editDraft.full_name.trim(),
+      email: editDraft.email.trim(),
+      role: editDraft.role,
+      class_id: editDraft.class_id || null,
+      class_name: classLabel || null,
+      is_active: editDraft.is_active
+    };
+    const { error } = await supabase.from('profiles').update(payload).eq('id', editingUser.id);
+    setSavingEdit(false);
+    if (error) return notify({ type: 'error', title: 'Could not update user', message: error.message });
+    notify({ type: 'success', title: 'User updated' });
+    closeEditUser();
     load();
   }
 
@@ -191,15 +244,43 @@ export default function UserManagement() {
               </select>
               <span>{person.class_name || '-'}</span>
               <span className={active ? 'status-pill done' : 'status-pill'}>{active ? 'Active' : 'Removed'}</span>
-              {active ? (
-                <button className="btn secondary danger-text" type="button" onClick={() => removePerson(person)}><Trash2 size={18} /> Remove Person</button>
-              ) : (
-                <button className="btn secondary" type="button" onClick={() => restorePerson(person)}><RotateCcw size={18} /> Restore Person</button>
-              )}
+              <span className="row-actions">
+                <button className="btn secondary" type="button" onClick={() => startEditUser(person)}><Pencil size={18} /> Edit</button>
+                {active ? (
+                  <button className="btn secondary danger-text" type="button" onClick={() => removePerson(person)}><Trash2 size={18} /> Remove</button>
+                ) : (
+                  <button className="btn secondary" type="button" onClick={() => restorePerson(person)}><RotateCcw size={18} /> Restore Person</button>
+                )}
+              </span>
             </div>
           );
         })}
       </div>
+
+      {editingUser && (
+        <div className="modal-backdrop" role="presentation" onClick={closeEditUser}>
+          <div className="modal-card" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <div>
+                <span className="eyebrow">Edit user</span>
+                {/* <h2>Edit</h2> */}
+              </div>
+              <button type="button" className="icon-btn" onClick={closeEditUser} aria-label="Close modal"><X size={18} /></button>
+            </div>
+            <form className="modal-form" onSubmit={saveEditUser}>
+              <label className="field">Full name<input value={editDraft.full_name} onChange={e => setEditDraft({ ...editDraft, full_name: e.target.value })} /></label>
+              <label className="field">Email<input type="email" value={editDraft.email} onChange={e => setEditDraft({ ...editDraft, email: e.target.value })} /></label>
+              <label className="field">Role<select value={editDraft.role} onChange={e => setEditDraft({ ...editDraft, role: e.target.value })}><option value="student">Student</option><option value="teacher">Teacher</option><option value="main_admin">Main Admin</option></select></label>
+              <label className="field">Class<select value={editDraft.class_id} onChange={e => setEditDraft({ ...editDraft, class_id: e.target.value })}><option value="">Select class</option>{activeClasses.map(item => <option value={item.id} key={item.id}>{item.class_name} {item.section_name}</option>)}</select></label>
+              <label className="field">Account status<select value={editDraft.is_active ? 'active' : 'removed'} onChange={e => setEditDraft({ ...editDraft, is_active: e.target.value === 'active' })}><option value="active">Active</option><option value="removed">Removed</option></select></label>
+              <div className="modal-actions">
+                <button className="btn secondary" type="button" onClick={closeEditUser}>Cancel</button>
+                <button className="btn" type="submit" disabled={savingEdit}><CheckCircle2 size={18} /> {savingEdit ? 'Saving...' : 'Save Changes'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {activeRole && (
         <div className="modal-backdrop" role="presentation" onClick={() => setActiveRole(null)}>

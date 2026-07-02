@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronDown, LogOut, Settings, User } from 'lucide-react';
 
-export default function GlobalHeader({ profile, onLogout }) {
+export default function GlobalHeader({ profile, onLogout, institutionName = 'ExamPortal', institutionSubtitle = 'Online Examination Portal' }) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef(null);
 
@@ -23,6 +23,13 @@ export default function GlobalHeader({ profile, onLogout }) {
 
   return (
     <header className="topbar">
+      <div className="topbar-brand">
+        <span className="topbar-mark">{institutionName.slice(0, 1).toUpperCase()}</span>
+        <div>
+          <b>{institutionName}</b>
+          <small>{institutionSubtitle}</small>
+        </div>
+      </div>
       <div className="profile-menu" ref={menuRef}>
         <button className="profile-trigger" type="button" onClick={() => setOpen(value => !value)} aria-expanded={open}>
           <span className="avatar">{profile?.full_name?.slice(0, 1)?.toUpperCase() || 'U'}</span>

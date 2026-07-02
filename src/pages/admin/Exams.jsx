@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { BarChart3, CalendarClock, CheckCircle2, Edit3, Eye, EyeOff, Layers, Plus, Trash2, X } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import CollapsibleSection from '../../components/CollapsibleSection.jsx';
 import HeroHeader from '../../components/HeroHeader.jsx';
+import { notify } from '../../components/Notifications.jsx';
 
 const empty = {
   title: '',
@@ -44,6 +44,7 @@ export default function Exams() {
   const [showValidation, setShowValidation] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [openForm, setOpenForm] = useState(false);
+  const [detailExam, setDetailExam] = useState(null);
 
   async function load() {
     const [{ data: c }, { data: q }, { data: e }, { data: classRows }, { data: studentRows }] = await Promise.all([
@@ -123,6 +124,7 @@ export default function Exams() {
 
   function editExam(exam) {
     setEditingId(exam.id);
+    setOpenForm(true);
     setForm({
       title: exam.title,
       total_questions: exam.total_questions,
@@ -220,7 +222,7 @@ export default function Exams() {
       setSuccessMessage(wasEditing ? 'Exam updated successfully.' : 'Exam created successfully.');
       load();
     } catch (error) {
-      alert(error.message);
+      notify({ type: 'error', title: 'Could not save exam', message: error.message });
     } finally {
       setSaving(false);
     }
@@ -229,7 +231,7 @@ export default function Exams() {
   async function deleteExam(id) {
     if (!confirm('Delete this exam? Student attempts linked to it will also be removed by the database.')) return;
     const { error } = await supabase.from('exams').delete().eq('id', id);
-    if (error) return alert(error.message);
+    if (error) return notify({ type: 'error', title: 'Could not delete exam', message: error.message });
     load();
   }
 
@@ -238,7 +240,7 @@ export default function Exams() {
     if (next.analysis_visible) next.result_visible = true;
     if (!next.result_visible) next.analysis_visible = false;
     const { error } = await supabase.from('exams').update(next).eq('id', exam.id);
-    if (error) return alert(error.message);
+    if (error) return notify({ type: 'error', title: 'Could not update exam', message: error.message });
     setExams(current => current.map(item => item.id === exam.id ? { ...item, ...next } : item));
   }
 
@@ -255,12 +257,24 @@ export default function Exams() {
         badge="Exam Management"
         title="Exam Management"
         singleLine
-        actions={<button className="btn secondary" type="button" onClick={resetForm}><Plus size={18} /> New Exam</button>}
+        actions={
+          <button type="button" className="btn" onClick={() => { setEditingId(null); setOpenForm(true); }}>
+            <Plus size={18} /> Create Exam
+          </button>
+        }
       />
 
-      <CollapsibleSection title={editingId ? 'Edit Exam' : 'Create Exam'} open={openForm || Boolean(editingId)} onToggle={() => setOpenForm(value => !value)} action={editingId ? <X size={18} /> : <Plus size={18} />}>
-      <form className="panel exam-builder" onSubmit={save}>
-        {editingId && <button className="icon-btn" type="button" onClick={resetForm} title="Cancel edit"><X size={18} /></button>}
+      {openForm && (
+        <div className="modal-backdrop" role="presentation" onClick={resetForm}>
+          <div className="modal-card exam-modal" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <div>
+                <span className="eyebrow">{editingId ? 'Edit exam' : 'Create exam'}</span>
+                <h2>{editingId ? 'Edit Exam' : 'Create Exam'}</h2>
+              </div>
+              <button className="icon-btn" type="button" onClick={resetForm} aria-label="Close modal"><X size={18} /></button>
+            </div>
+            <form className="modal-form exam-builder" onSubmit={save}>
 
         <div className="grid-2">
           <label className="field">Title<input placeholder="Exam title" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} /></label>
@@ -315,21 +329,35 @@ export default function Exams() {
         {formWarnings.length > 0 && <div className="notice info">{formWarnings[0]}</div>}
         {successMessage && <div className="notice success">{successMessage}</div>}
 
-        <button className="btn" disabled={saving}>
-          <CheckCircle2 size={18} /> {saving ? 'Saving...' : editingId ? 'Update Exam' : 'Create Exam'}
-        </button>
-      </form>
-      </CollapsibleSection>
+              <div className="modal-actions">
+                <button className="btn secondary" type="button" onClick={resetForm}>Cancel</button>
+                <button className="btn" disabled={saving}>
+                  <CheckCircle2 size={18} /> {saving ? 'Saving...' : editingId ? 'Update Exam' : 'Create Exam'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <div className="exam-list">
         {exams.map(exam => {
           const examChapters = exam.exam_chapters || [];
+          const chaptersText = examChapters.map(row => row.chapters?.chapter_name).filter(Boolean).join(', ') || 'No chapters selected';
+          const truncatedText = chaptersText.length > 60 ? chaptersText.slice(0, 57) + '...' : chaptersText;
           return (
             <article className="exam-card" key={exam.id}>
               <div className="exam-card-main">
                 <div>
                   <h2>{exam.title}</h2>
-                  <p className="muted">{examChapters.map(row => row.chapters?.chapter_name).filter(Boolean).join(', ') || 'No chapters selected'}</p>
+                  <p 
+                    className="muted" 
+                    title="Click to view full details" 
+                    onClick={() => setDetailExam(exam)} 
+                    style={{ cursor: 'pointer', textDecoration: chaptersText.length > 60 ? 'underline dotted' : 'none' }}
+                  >
+                    {truncatedText}
+                  </p>
                 </div>
                 <span className="status-pill">{exam.difficulty}</span>
               </div>
@@ -352,6 +380,55 @@ export default function Exams() {
           );
         })}
       </div>
+
+      {detailExam && (
+        <div className="modal-backdrop" role="presentation" onClick={() => setDetailExam(null)}>
+          <div className="modal-card exam-modal" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()} style={{ borderRadius: '8px', maxWidth: '500px' }}>
+            <div className="modal-head">
+              <div>
+                <span className="eyebrow">Exam Details</span>
+                <h2>{detailExam.title}</h2>
+              </div>
+              <button className="icon-btn" type="button" onClick={() => setDetailExam(null)} aria-label="Close modal"><X size={18} /></button>
+            </div>
+            
+            <div style={{ display: 'grid', gap: '16px', fontSize: '0.9rem', color: '#334155' }}>
+              <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <h4 style={{ margin: '0 0 8px 0', fontSize: '0.95rem', color: '#1e293b' }}>Structure & Scoring</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px' }}>
+                  <div><strong>Difficulty:</strong> <span className="capitalize">{detailExam.difficulty}</span></div>
+                  <div><strong>Questions:</strong> {detailExam.total_questions}</div>
+                  <div><strong>Duration:</strong> {detailExam.duration_minutes} mins</div>
+                  <div><strong>Marks/Question:</strong> {detailExam.marks_per_question}</div>
+                  <div><strong>Total Marks:</strong> {detailExam.total_marks}</div>
+                  <div><strong>Passing Marks:</strong> {detailExam.passing_marks || 'N/A'}</div>
+                </div>
+              </div>
+
+              <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <h4 style={{ margin: '0 0 8px 0', fontSize: '0.95rem', color: '#1e293b' }}>Visibility & Attempt Rules</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px' }}>
+                  <div><strong>Publish status:</strong> <span className="capitalize">{detailExam.status}</span></div>
+                  <div><strong>Multiple attempts:</strong> {detailExam.allow_multiple_attempts ? `Yes (max ${detailExam.max_attempts || 'unlimited'})` : 'No'}</div>
+                  <div><strong>Publish result:</strong> {detailExam.result_visible ? 'Yes' : 'No'}</div>
+                  <div><strong>Detailed analysis:</strong> {detailExam.analysis_visible ? 'Yes' : 'No'}</div>
+                </div>
+              </div>
+
+              <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <h4 style={{ margin: '0 0 8px 0', fontSize: '0.95rem', color: '#1e293b' }}>Selected Chapters</h4>
+                <p style={{ margin: 0, lineHeight: '1.4', color: '#64748b' }}>
+                  {detailExam.exam_chapters?.map(row => row.chapters?.chapter_name).filter(Boolean).join(', ') || 'No chapters selected'}
+                </p>
+              </div>
+            </div>
+
+            <div className="modal-actions" style={{ marginTop: '20px', paddingTop: '12px', borderTop: '1px solid #e2e8f0' }}>
+              <button className="btn" type="button" onClick={() => setDetailExam(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

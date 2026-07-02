@@ -17,17 +17,17 @@ import Exams from './pages/admin/Exams.jsx';
 import Reports from './pages/admin/Reports.jsx';
 import Permissions from './pages/admin/Permissions.jsx';
 import UserManagement from './pages/admin/UserManagement.jsx';
-import TeacherStudents from './pages/admin/TeacherStudents.jsx';
 import TeacherDashboard from './pages/teacher/TeacherDashboard.jsx';
 import TeacherReports from './pages/teacher/TeacherReports.jsx';
 import TeacherStudentsList from './pages/teacher/TeacherStudentsList.jsx';
 import StudentDashboard from './pages/student/StudentDashboard.jsx';
+import PracticeTest from './pages/student/PracticeTest.jsx';
+import PracticeReview from './pages/student/PracticeReview.jsx';
 import Instructions from './pages/student/Instructions.jsx';
 import AttemptExam from './pages/student/AttemptExam.jsx';
 import Result from './pages/student/Result.jsx';
 import ChangePassword from './pages/account/ChangePassword.jsx';
 import Profile from './pages/account/Profile.jsx';
-import QuestionUpload from './pages/shared/QuestionUpload.jsx';
 import './styles/global.css';
 
 createRoot(document.getElementById('root')).render(
@@ -46,28 +46,31 @@ createRoot(document.getElementById('root')).render(
             <Route path="chapters" element={<Chapters />} />
             <Route path="classes" element={<Classes />} />
             <Route path="questions" element={<Questions />} />
-            <Route path="upload" element={<QuestionUpload />} />
             <Route path="exams" element={<Exams />} />
             <Route path="reports" element={<Reports />} />
             <Route path="permissions" element={<Permissions />} />
             <Route path="users" element={<UserManagement />} />
-            <Route path="assign-students" element={<TeacherStudents />} />
           </Route>
 
           <Route path="/teacher" element={<ProtectedRoute roles={["teacher"]}><AppLayout /></ProtectedRoute>}>
             <Route index element={<TeacherDashboard />} />
-            <Route path="upload" element={<QuestionUpload />} />
             <Route path="questions" element={<Questions />} />
             <Route path="exams" element={<Exams />} />
             <Route path="students" element={<TeacherStudentsList />} />
             <Route path="reports" element={<TeacherReports />} />
           </Route>
 
+          <Route path="/admin/upload" element={<ProtectedRoute roles={["main_admin"]}><Navigate to="/admin/questions" replace /></ProtectedRoute>} />
+          <Route path="/teacher/upload" element={<ProtectedRoute roles={["teacher"]}><Navigate to="/teacher/questions" replace /></ProtectedRoute>} />
+          <Route path="/admin/assign-students" element={<ProtectedRoute roles={["main_admin"]}><Navigate to="/admin/users" replace /></ProtectedRoute>} />
+
           <Route path="/student" element={<ProtectedRoute roles={["student"]}><AppLayout /></ProtectedRoute>}>
             <Route index element={<StudentDashboard />} />
             <Route path="exams" element={<StudentDashboard />} />
             <Route path="attempts" element={<StudentDashboard />} />
             <Route path="results" element={<StudentDashboard />} />
+            <Route path="practice" element={<PracticeTest />} />
+            <Route path="practice/review/:attemptId" element={<PracticeReview />} />
             <Route path="instructions/:examId" element={<Instructions />} />
             <Route path="attempt/:attemptId" element={<AttemptExam />} />
             <Route path="result/:attemptId" element={<Result />} />

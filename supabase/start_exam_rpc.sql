@@ -2,6 +2,9 @@
 -- "Could not find the function public.start_exam(p_exam_id) in the schema cache"
 -- This version supports separate retake attempts.
 
+alter table if exists public.student_attempts alter column exam_id drop not null;
+alter table if exists public.student_attempts add column if not exists attempt_type text not null default 'exam' check (attempt_type in ('exam', 'practice'));
+
 create or replace function public.start_exam(p_exam_id uuid)
 returns uuid
 language plpgsql
@@ -99,7 +102,7 @@ begin
       where chapter_id = any(v_chapter_ids)
         and coalesce(is_deleted, false) = false
         and (v_exam.difficulty = 'mixed' or difficulty = v_exam.difficulty)
-        and not id = any(v_final_question_ids)
+        and not (id = any(v_final_question_ids))
       order by case when coalesce(v_exam.randomize_questions, true) then random() else 0 end, created_at
       limit v_missing
     ) backup;
@@ -110,8 +113,8 @@ begin
     raise exception 'Not enough questions are available for this exam.';
   end if;
 
-  insert into public.student_attempts(student_id, exam_id, status, attempt_number)
-  values (v_student, p_exam_id, 'in_progress', v_attempt_number)
+  insert into public.student_attempts(student_id, exam_id, attempt_type, status, attempt_number)
+  values (v_student, p_exam_id, 'exam', 'in_progress', v_attempt_number)
   returning id into v_attempt_id;
 
   insert into public.exam_questions(attempt_id, question_id, question_order)

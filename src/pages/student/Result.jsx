@@ -67,7 +67,6 @@ export default function Result() {
         badge="Result Published"
         title={attempt.exams?.title || 'Exam Result'}
         singleLine
-        stats={<div className="hero-stat"><Award size={28} /><strong>{attempt.accuracy}%</strong><span>Accuracy</span></div>}
       />
 
       <div className="cards stat-strip">
@@ -122,23 +121,60 @@ export default function Result() {
             <div className="question-report-list">
               {questions.map(question => {
                 const status = question.selected_option ? question.is_correct ? 'Correct' : 'Wrong' : 'Skipped';
+                const getOptionText = (key) => {
+                  if (!key) return null;
+                  const upperKey = key.toUpperCase();
+                  let text = '';
+                  if (upperKey === 'A') text = question.option_a;
+                  else if (upperKey === 'B') text = question.option_b;
+                  else if (upperKey === 'C') text = question.option_c;
+                  else if (upperKey === 'D') text = question.option_d;
+                  if (!text) return upperKey;
+                  return `${upperKey}. ${text.length > 40 ? text.slice(0, 37) + '...' : text}`;
+                };
                 return (
-                  <div className="question-report-row" key={question.id}>
-                    <div className="question-report-title">
-                      <span>Q{question.question_order}</span>
-                      <div>
-                        <b>{question.question_text}</b>
-                        <small>{question.chapter_name} • {question.difficulty} • {question.marks || 1} mark</small>
+                  <div className="question-report-row" key={question.id} style={{ padding: '12px 16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                      <div className="question-report-title" style={{ padding: 0, border: 'none', margin: 0, display: 'flex', gap: '12px', alignItems: 'center' }}>
+                        <span style={{ flexShrink: 0 }}>Q{question.question_order}</span>
+                        <div>
+                          <b style={{ fontSize: '0.95rem', color: '#1e293b' }}>{question.question_text}</b>
+                          <small style={{ display: 'block', marginTop: '2px', color: '#64748b' }}>{question.chapter_name} • {question.difficulty} • {question.marks || 1} mark</small>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <span className="chip" style={{ display: 'inline-flex', padding: '4px 8px', borderRadius: '5px', background: '#f1f5f9', border: '1px solid #e2e8f0', gap: '4px', fontSize: '0.75rem', alignItems: 'center' }}>
+                          <span style={{ color: '#64748b', fontWeight: 500 }}>Selected:</span>
+                          <strong style={{ color: '#1e293b' }}>{getOptionText(question.selected_option) || 'Skipped'}</strong>
+                        </span>
+                        <span className="chip" style={{ display: 'inline-flex', padding: '4px 8px', borderRadius: '5px', background: '#f1f5f9', border: '1px solid #e2e8f0', gap: '4px', fontSize: '0.75rem', alignItems: 'center' }}>
+                          <span style={{ color: '#64748b', fontWeight: 500 }}>Correct:</span>
+                          <strong style={{ color: '#1e293b' }}>{getOptionText(question.correct_option) || '-'}</strong>
+                        </span>
+                        <span
+                          className="status-pill"
+                          style={{
+                            display: 'inline-flex',
+                            padding: '4px 8px',
+                            borderRadius: '5px',
+                            fontSize: '0.75rem',
+                            alignItems: 'center',
+                            gap: '4px',
+                            fontWeight: 600,
+                            background: question.is_correct ? '#ecfdf5' : question.selected_option ? '#fef2f2' : '#fffbeb',
+                            color: question.is_correct ? '#047857' : question.selected_option ? '#b91c1c' : '#d97706',
+                            border: `1px solid ${question.is_correct ? '#a7f3d0' : question.selected_option ? '#fecaca' : '#fef3c7'}`
+                          }}
+                        >
+                          {question.is_correct ? <CheckCircle2 size={12} /> : <XCircle size={12} />} {status}
+                        </span>
                       </div>
                     </div>
-                    <div className="answer-grid">
-                      <span><small>Selected</small><b>{question.selected_option || 'Skipped'}</b></span>
-                      <span><small>Correct</small><b>{question.correct_option || '-'}</b></span>
-                      <span className={question.is_correct ? 'answer-status correct' : question.selected_option ? 'answer-status wrong' : 'answer-status skipped'}>
-                        {question.is_correct ? <CheckCircle2 size={16} /> : <XCircle size={16} />} {status}
-                      </span>
-                    </div>
-                    {question.explanation && <p className="muted"><b>Explanation:</b> {question.explanation}</p>}
+                    {question.explanation && (
+                      <p className="muted" style={{ margin: '6px 0 0 0', fontSize: '0.8rem', paddingLeft: '46px' }}>
+                        <b>Explanation:</b> {question.explanation}
+                      </p>
+                    )}
                   </div>
                 );
               })}

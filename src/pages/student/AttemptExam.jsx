@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { AlertTriangle, ChevronLeft, ChevronRight, Eraser, Flag, Save } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, ChevronRight, Eraser, Flag, Save, SendHorizonal, X } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { getAttemptQuestions, getSavedAnswers, saveAttemptAnswer, submitExam } from '../../services/examService.js';
 import LoadingScreen from '../../components/LoadingScreen.jsx';
@@ -24,6 +24,8 @@ export default function AttemptExam() {
   const [current, setCurrent] = useState(0);
   const [remaining, setRemaining] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const [showSubmitModal, setShowSubmitModal] = useState(false);
   const answersRef = useRef({});
   const reviewRef = useRef({});
 
@@ -36,7 +38,7 @@ export default function AttemptExam() {
     async function load() {
       const { data: a } = await supabase.from('student_attempts').select('*, exams(*)').eq('id', attemptId).single();
       if (a?.status === 'submitted') {
-        nav(`/student/result/${attemptId}`);
+        nav(a?.attempt_type === 'practice' ? `/student/practice/review/${attemptId}` : `/student/result/${attemptId}`);
         return;
       }
       const questionRows = await getAttemptQuestions(attemptId);
@@ -52,8 +54,9 @@ export default function AttemptExam() {
   }, [attemptId, nav]);
 
   useEffect(() => {
-    if (!attempt || !exam) return;
-    const endTime = new Date(attempt.started_at).getTime() + Number(exam.duration_minutes || 0) * 60 * 1000;
+    if (!attempt) return;
+    const durationMinutes = Number(exam?.duration_minutes || attempt.practice_duration_minutes || 0);
+    const endTime = new Date(attempt.started_at).getTime() + durationMinutes * 60 * 1000;
     const timer = setInterval(() => {
       const next = Math.max(0, Math.round((endTime - Date.now()) / 1000));
       setRemaining(next);
@@ -66,6 +69,7 @@ export default function AttemptExam() {
   }, [attempt, exam]);
 
   const active = questions[current];
+  const isLastQuestion = current === questions.length - 1;
 
   const counts = useMemo(() => {
     return questions.reduce((map, question) => {
@@ -98,7 +102,12 @@ export default function AttemptExam() {
     if (!active) return;
     const status = answers[active.id] ? review[active.id] || 'answered' : 'not_answered';
     await saveAttemptAnswer(attemptId, active.id, answers[active.id], status);
-    goTo(Math.min(current + 1, questions.length - 1));
+    if (isLastQuestion) {
+      // Last question → open submit modal instead of looping
+      setShowSubmitModal(true);
+    } else {
+      goTo(current + 1);
+    }
   }
 
   async function markForReview() {
@@ -124,18 +133,33 @@ export default function AttemptExam() {
 
   async function handleSubmit(auto = false, finalAnswers = answers, finalReview = review) {
     if (submitting) return;
-    if (!auto && !confirm('Submit exam now? You cannot change answers after final submission.')) return;
+    if (!auto) {
+      setShowSubmitModal(true);
+      return;
+    }
+    // Auto-submit (timer ended) – skip modal
+    doSubmit(finalAnswers, finalReview);
+  }
+
+  async function doSubmit(finalAnswers = answers, finalReview = review) {
+    if (submitting) return;
+    setSubmitError('');
     try {
       setSubmitting(true);
+      setShowSubmitModal(false);
       await submitExam(attemptId, finalAnswers, finalReview);
       nav(`/student/result/${attemptId}`);
     } catch (e) {
-      alert(e.message);
+      setSubmitError(e.message || 'Something went wrong. Please try again.');
       setSubmitting(false);
+      setShowSubmitModal(true);
     }
   }
 
   if (!attempt || !active) return <LoadingScreen label="Loading exam attempt..." />;
+
+  const answeredCount = questions.filter(q => answers[q.id]).length;
+  const unansweredCount = questions.length - answeredCount;
 
   return (
     <div className="exam-shell">
@@ -171,8 +195,10 @@ export default function AttemptExam() {
             <button className="btn secondary" type="button" onClick={() => goTo(current - 1)} disabled={current === 0}><ChevronLeft size={18} /> Previous</button>
             <button className="btn secondary" type="button" onClick={clearResponse}><Eraser size={18} /> Clear Response</button>
             <button className="btn secondary" type="button" onClick={markForReview}><Flag size={18} /> Mark for Review</button>
-            <button className="btn" type="button" onClick={saveAndNext}><Save size={18} /> Save & Next</button>
-            <button className="btn secondary" type="button" onClick={() => goTo(current + 1)} disabled={current === questions.length - 1}>Next <ChevronRight size={18} /></button>
+            <button className="btn" type="button" onClick={saveAndNext}>
+              <Save size={18} /> {isLastQuestion ? 'Save & Submit' : 'Save & Next'}
+            </button>
+            <button className="btn secondary" type="button" onClick={() => goTo(current + 1)} disabled={isLastQuestion}>Next <ChevronRight size={18} /></button>
           </div>
         </section>
 
@@ -188,10 +214,91 @@ export default function AttemptExam() {
             <span><i className="review" /> Review ({counts.review || 0})</span>
             <span><i className="answered_review" /> Answered + Review ({counts.answered_review || 0})</span>
           </div>
-          <div className="notice info"><AlertTriangle size={18} /> Answers are saved when you choose, clear, review, or save & next.</div>
+          <div className="notice info"><AlertTriangle size={18} /> Answers are saved when you choose, clear, review, or save &amp; next.</div>
           <button className="btn submit-wide" type="button" onClick={() => handleSubmit(false)} disabled={submitting}>{submitting ? 'Submitting...' : 'Submit Exam'}</button>
         </aside>
       </main>
+
+      {/* Custom Submit Confirmation Modal */}
+      {showSubmitModal && (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={() => { if (!submitting) setShowSubmitModal(false); }}
+        >
+          <div
+            className="modal-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="submit-modal-title"
+            style={{ maxWidth: '460px', padding: '32px' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px' }}>
+              <span style={{
+                flexShrink: 0,
+                width: 48, height: 48,
+                borderRadius: '50%',
+                background: 'linear-gradient(135deg,#f97316,#ef4444)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center'
+              }}>
+                <SendHorizonal size={22} color="#fff" />
+              </span>
+              <div style={{ flex: 1 }}>
+                <h2 id="submit-modal-title" style={{ marginBottom: 6, fontSize: '1.15rem' }}>Submit Exam?</h2>
+                <p className="muted" style={{ marginBottom: 16, lineHeight: 1.5 }}>
+                  You are about to submit your exam. <strong>You cannot change your answers after submission.</strong>
+                </p>
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: submitError ? 14 : 0 }}>
+                  <span className="chip"><b>{answeredCount}</b><small>Answered</small></span>
+                  {unansweredCount > 0 && (
+                    <span className="chip" style={{ background: '#fff3cd', color: '#92400e' }}>
+                      <b>{unansweredCount}</b><small>Unanswered</small>
+                    </span>
+                  )}
+                  <span className="chip"><b>{questions.length}</b><small>Total</small></span>
+                </div>
+                {submitError && (
+                  <div className="notice" style={{ marginTop: 12, color: '#b91c1c', background: '#fef2f2', borderColor: '#fca5a5' }}>
+                    <AlertTriangle size={16} /> {submitError}
+                  </div>
+                )}
+              </div>
+              {!submitting && (
+                <button
+                  className="icon-btn"
+                  type="button"
+                  onClick={() => setShowSubmitModal(false)}
+                  aria-label="Close"
+                  style={{ flexShrink: 0 }}
+                >
+                  <X size={18} />
+                </button>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 24 }}>
+              <button
+                className="btn secondary"
+                type="button"
+                onClick={() => setShowSubmitModal(false)}
+                disabled={submitting}
+              >
+                Go Back
+              </button>
+              <button
+                className="btn"
+                type="button"
+                onClick={() => doSubmit()}
+                disabled={submitting}
+                style={{ background: 'linear-gradient(135deg,#f97316,#ef4444)', borderColor: 'transparent' }}
+              >
+                <SendHorizonal size={16} /> {submitting ? 'Submitting…' : 'Yes, Submit'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

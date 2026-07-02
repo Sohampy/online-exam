@@ -20,7 +20,7 @@ export default function TeacherStudentsList() {
       }
       const [{ data: profiles }, { data: attempts }] = await Promise.all([
         supabase.from('profiles').select('id,full_name,email,class_name,is_active').in('id', ids),
-        supabase.from('student_attempts').select('student_id,total_score,submitted_at,status').in('student_id', ids).order('started_at', { ascending: false })
+        supabase.from('student_attempts').select('student_id,total_score,submitted_at,status,attempt_type').in('student_id', ids).eq('attempt_type', 'exam').order('started_at', { ascending: false })
       ]);
       const attemptMap = (attempts || []).reduce((map, attempt) => {
         if (!map[attempt.student_id]) map[attempt.student_id] = [];
