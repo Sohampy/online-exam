@@ -23,7 +23,27 @@ export default function Questions() {
   const [visibleLimit, setVisibleLimit] = useState(25);
   const [openForm, setOpenForm] = useState(false);
   const [openUpload, setOpenUpload] = useState(false);
+  const [modalSubject, setModalSubject] = useState('all');
   const selectAllRef = useRef(null);
+
+  const uniqueSubjects = useMemo(() => {
+    const list = chapters.map(c => c.subject).filter(Boolean);
+    return Array.from(new Set(list));
+  }, [chapters]);
+
+  const filteredModalChapters = useMemo(() => {
+    if (modalSubject === 'all') return chapters;
+    return chapters.filter(c => c.subject === modalSubject);
+  }, [chapters, modalSubject]);
+
+  useEffect(() => {
+    if (form.chapter_id && chapters.length) {
+      const selectedChapter = chapters.find(c => String(c.id) === String(form.chapter_id));
+      if (selectedChapter && selectedChapter.subject) {
+        setModalSubject(selectedChapter.subject);
+      }
+    }
+  }, [form.chapter_id, chapters]);
 
   async function load() {
     setLoadError('');
@@ -237,7 +257,7 @@ export default function Questions() {
         singleLine
         actions={
           <>
-            <button type="button" className="btn" onClick={() => { setEdit(null); setForm(empty); setOpenForm(true); }}>
+            <button type="button" className="btn" onClick={() => { setEdit(null); setForm(empty); setModalSubject('all'); setOpenForm(true); }}>
               <Plus size={18} /> Add Question
             </button>
             <button type="button" className="btn secondary" onClick={() => setOpenUpload(true)}>
@@ -345,9 +365,30 @@ export default function Questions() {
               <button className="icon-btn" type="button" onClick={() => { setOpenForm(false); setEdit(null); setForm(empty); }}><X size={18} /></button>
             </div>
             <form className="modal-form" onSubmit={save}>
-              <div className="grid-2">
-                <label className="field">Chapter<select value={form.chapter_id} onChange={e => setForm({ ...form, chapter_id: e.target.value })}><option value="">Select chapter</option>{chapters.map(c => <option value={c.id} key={c.id}>{c.subject} - {c.chapter_name}</option>)}</select></label>
-                <label className="field">Difficulty<select value={form.difficulty} onChange={e => setForm({ ...form, difficulty: e.target.value })}><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option></select></label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '16px' }}>
+                <label className="field">Subject
+                  <select value={modalSubject} onChange={e => { setModalSubject(e.target.value); setForm(f => ({ ...f, chapter_id: '' })); }}>
+                    <option value="all">All Subjects</option>
+                    {uniqueSubjects.map(sub => (
+                      <option key={sub} value={sub}>{sub}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">Chapter
+                  <select value={form.chapter_id} onChange={e => setForm(f => ({ ...f, chapter_id: e.target.value }))}>
+                    <option value="">Select chapter</option>
+                    {filteredModalChapters.map(c => (
+                      <option value={c.id} key={c.id}>{c.subject} - {c.chapter_name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">Difficulty
+                  <select value={form.difficulty} onChange={e => setForm(f => ({ ...f, difficulty: e.target.value }))}>
+                    <option value="easy">Easy</option>
+                    <option value="medium">Medium</option>
+                    <option value="hard">Hard</option>
+                  </select>
+                </label>
               </div>
               <label className="field">Question text<textarea placeholder="Type the full question here" value={form.question_text} onChange={e => setForm({ ...form, question_text: e.target.value })} /></label>
               <div className="grid-2">{['a', 'b', 'c', 'd'].map(x => <label className="field" key={x}>Option {x.toUpperCase()}<input placeholder={`Answer choice ${x.toUpperCase()}`} value={form[`option_${x}`]} onChange={e => setForm({ ...form, [`option_${x}`]: e.target.value })} /></label>)}</div>

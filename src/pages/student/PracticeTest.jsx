@@ -189,6 +189,56 @@ export default function PracticeTest() {
     }
   }
 
+  async function handleReattempt(attempt) {
+    if (!user?.id) return;
+    try {
+      setStarting(true);
+      const { data, error } = await supabase
+        .from('exam_questions')
+        .select('question_id, questions(chapter_id)')
+        .eq('attempt_id', attempt.id);
+      
+      if (error) throw error;
+      
+      const chapterIds = Array.from(
+        new Set((data || []).map(row => row.questions?.chapter_id).filter(Boolean))
+      ).sort();
+      
+      if (!chapterIds.length) {
+        throw new Error('No chapter data found for this attempt.');
+      }
+      
+      const subject = attempt.practice_subject;
+      const difficulty = attempt.difficulty || 'mixed';
+      const questionCount = data.length || 10;
+      
+      const signature = buildPracticeSignature({
+        subject,
+        chapterIds,
+        questionCount,
+        difficulty
+      });
+      
+      setShowAttemptsModal(false);
+      
+      await beginPractice({
+        subject,
+        chapterIds,
+        questionCount,
+        difficulty,
+        signature
+      });
+    } catch (err) {
+      notify({
+        type: 'error',
+        title: 'Could not re-attempt',
+        message: err.message || 'An error occurred while setting up the re-attempt.'
+      });
+    } finally {
+      setStarting(false);
+    }
+  }
+
   if (loading) return <LoadingScreen label="Loading practice test..." />;
 
   return (
@@ -437,17 +487,30 @@ export default function PracticeTest() {
                         Attempt {attempt.attempt_number || 1} • Score {attempt.total_score || 0} • Accuracy {Number(attempt.accuracy || attempt.percentage || 0)}% • Started {attempt.started_at ? new Date(attempt.started_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : ''}
                       </small>
                     </span>
-                    <button
-                      className="btn secondary"
-                      type="button"
-                      onClick={() => {
-                        setShowAttemptsModal(false);
-                        navigate(attempt.status === 'in_progress' ? `/student/attempt/${attempt.id}` : `/student/practice/review/${attempt.id}`);
-                      }}
-                      style={{ padding: '6px 12px', fontSize: '0.85rem' }}
-                    >
-                      {attempt.status === 'in_progress' ? 'Resume' : 'Review'}
-                    </button>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        className="btn secondary"
+                        type="button"
+                        onClick={() => {
+                          setShowAttemptsModal(false);
+                          navigate(attempt.status === 'in_progress' ? `/student/attempt/${attempt.id}` : `/student/practice/review/${attempt.id}`);
+                        }}
+                        style={{ padding: '6px 12px', fontSize: '0.85rem' }}
+                      >
+                        {attempt.status === 'in_progress' ? 'Resume' : 'Review'}
+                      </button>
+                      {attempt.status === 'submitted' && (
+                        <button
+                          className="btn"
+                          type="button"
+                          disabled={starting}
+                          onClick={() => handleReattempt(attempt)}
+                          style={{ padding: '6px 12px', fontSize: '0.85rem' }}
+                        >
+                          Re-attempt
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
                 {!filteredHistoryAttempts.length && (

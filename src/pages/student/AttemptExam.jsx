@@ -160,6 +160,7 @@ export default function AttemptExam() {
 
   const answeredCount = questions.filter(q => answers[q.id]).length;
   const unansweredCount = questions.length - answeredCount;
+  const markedCount = questions.filter(q => review[q.id]?.includes('review')).length;
 
   return (
     <div className="exam-shell">
@@ -198,7 +199,19 @@ export default function AttemptExam() {
             <button className="btn" type="button" onClick={saveAndNext}>
               <Save size={18} /> {isLastQuestion ? 'Save & Submit' : 'Save & Next'}
             </button>
-            <button className="btn secondary" type="button" onClick={() => goTo(current + 1)} disabled={isLastQuestion}>Next <ChevronRight size={18} /></button>
+            <button 
+              className="btn secondary" 
+              type="button" 
+              onClick={() => {
+                if (isLastQuestion) {
+                  setShowSubmitModal(true);
+                } else {
+                  goTo(current + 1);
+                }
+              }}
+            >
+              Next <ChevronRight size={18} />
+            </button>
           </div>
         </section>
 
@@ -231,7 +244,7 @@ export default function AttemptExam() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="submit-modal-title"
-            style={{ maxWidth: '460px', padding: '32px' }}
+            style={{ maxWidth: '500px', padding: '32px' }}
             onClick={e => e.stopPropagation()}
           >
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px' }}>
@@ -249,14 +262,27 @@ export default function AttemptExam() {
                 <p className="muted" style={{ marginBottom: 16, lineHeight: 1.5 }}>
                   You are about to submit your exam. <strong>You cannot change your answers after submission.</strong>
                 </p>
-                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: submitError ? 14 : 0 }}>
-                  <span className="chip"><b>{answeredCount}</b><small>Answered</small></span>
+                 <div style={{ display: 'flex', gap: 8, flexWrap: 'nowrap', marginBottom: submitError ? 14 : 0 }}>
+                  <span className="chip" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '8px 10px', flex: '1 1 auto', minWidth: '0', cursor: 'default' }}>
+                    <b style={{ fontSize: '1rem', lineHeight: '1.2' }}>{answeredCount}</b>
+                    <small style={{ fontSize: '11px', marginTop: '2px' }}>Answered</small>
+                  </span>
                   {unansweredCount > 0 && (
-                    <span className="chip" style={{ background: '#fff3cd', color: '#92400e' }}>
-                      <b>{unansweredCount}</b><small>Unanswered</small>
+                    <span className="chip" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#fff3cd', color: '#92400e', borderColor: '#fef3c7', padding: '8px 10px', flex: '1.2 1 auto', minWidth: '0', cursor: 'default' }}>
+                      <b style={{ fontSize: '1rem', lineHeight: '1.2' }}>{unansweredCount}</b>
+                      <small style={{ color: '#92400e', fontSize: '11px', marginTop: '2px' }}>Unanswered</small>
                     </span>
                   )}
-                  <span className="chip"><b>{questions.length}</b><small>Total</small></span>
+                  {markedCount > 0 && (
+                    <span className="chip" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#eff6ff', color: '#1d4ed8', borderColor: '#dbeafe', padding: '8px 10px', flex: '1 1 auto', minWidth: '0', cursor: 'default' }}>
+                      <b style={{ fontSize: '1rem', lineHeight: '1.2' }}>{markedCount}</b>
+                      <small style={{ color: '#1d4ed8', fontSize: '11px', marginTop: '2px' }}>Marked</small>
+                    </span>
+                  )}
+                  <span className="chip" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '8px 10px', flex: '1 1 auto', minWidth: '0', cursor: 'default' }}>
+                    <b style={{ fontSize: '1rem', lineHeight: '1.2' }}>{questions.length}</b>
+                    <small style={{ fontSize: '11px', marginTop: '2px' }}>Total</small>
+                  </span>
                 </div>
                 {submitError && (
                   <div className="notice" style={{ marginTop: 12, color: '#b91c1c', background: '#fef2f2', borderColor: '#fca5a5' }}>

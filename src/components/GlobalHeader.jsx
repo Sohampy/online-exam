@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronDown, LogOut, Settings, User } from 'lucide-react';
+import logoImg from '../bhlogo.png';
 
 export default function GlobalHeader({ profile, onLogout, institutionName = 'ExamPortal', institutionSubtitle = 'Online Examination Portal' }) {
   const [open, setOpen] = useState(false);
@@ -21,15 +22,22 @@ export default function GlobalHeader({ profile, onLogout, institutionName = 'Exa
     };
   }, []);
 
+  const dashboardPath = profile?.role === 'main_admin' 
+    ? '/admin' 
+    : profile?.role === 'teacher' 
+      ? '/teacher' 
+      : '/student';
+
   return (
     <header className="topbar">
-      <div className="topbar-brand">
-        <span className="topbar-mark">{institutionName.slice(0, 1).toUpperCase()}</span>
-        <div>
-          <b>{institutionName}</b>
-          <small>{institutionSubtitle}</small>
+      <Link to={dashboardPath} className="topbar-brand" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '14px' }}>
+        <img src={logoImg} alt={institutionName} style={{ height: '36px', objectFit: 'contain' }} />
+        <div style={{ height: '24px', width: '1px', background: '#e2e8f0' }} />
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <b style={{ color: '#0f172a', fontSize: '0.95rem', fontWeight: 700, lineHeight: 1.2 }}>{institutionName}</b>
+          <small style={{ color: '#64748b', fontSize: '0.75rem', fontWeight: 500 }}>{institutionSubtitle}</small>
         </div>
-      </div>
+      </Link>
       <div className="profile-menu" ref={menuRef}>
         <button className="profile-trigger" type="button" onClick={() => setOpen(value => !value)} aria-expanded={open}>
           <span className="avatar">{profile?.full_name?.slice(0, 1)?.toUpperCase() || 'U'}</span>

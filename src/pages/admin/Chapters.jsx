@@ -74,7 +74,6 @@ export default function Chapters() {
         <button type="button" className="action-tile" onClick={() => { setEdit(null); setForm(empty); setOpenForm(true); }}>
           <span><Plus size={22} /></span>
           <b>Add Chapter</b>
-          <small>Create a chapter inside a popup form</small>
         </button>
       </section>
 

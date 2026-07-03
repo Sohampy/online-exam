@@ -2303,6 +2303,19 @@ textarea {
   color:#64748b;
   line-height: 1.3 !important;
 }
+
+.action-tile:not(:has(small)) {
+  display: flex !important;
+  align-items: center !important;
+}
+
+.action-tile:not(:has(small)) span {
+  grid-row: unset !important;
+}
+
+.action-tile:not(:has(small)) b {
+  grid-column: unset !important;
+}
 .hero-caption {
   margin:-8px 0 18px;
   color:#64748b;
@@ -3528,5 +3541,117 @@ textarea {
   margin-top: 16px !important;
   padding-top: 12px !important;
   border-top: 1px solid #e2e8f0 !important;
+}
+
+.class-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.class-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 180px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  transition: all 0.2s ease;
+}
+
+.class-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.02);
+}
+
+.class-card-body h3 {
+  margin: 0 0 4px 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #1e293b;
+  line-height: 1.3;
+}
+
+.class-card-body .batch-badge {
+  display: inline-block;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.class-card-body p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #64748b;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.class-card-footer {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #f1f5f9;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.class-card-footer .status-tag {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 999px;
+}
+
+.class-card-footer .status-tag.active {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.class-card-footer .status-tag.inactive {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.class-card-footer .actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.class-card-footer .actions .icon-btn {
+  padding: 6px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #64748b;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.class-card-footer .actions .icon-btn:hover {
+  background: #f8fafc;
+  color: #1e293b;
+}
+
+.class-card-footer .actions .btn {
+  padding: 6px 10px;
+  font-size: 0.75rem;
+  height: auto;
+  border-radius: 6px;
+  gap: 4px;
 }
 

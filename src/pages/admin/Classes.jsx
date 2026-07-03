@@ -100,21 +100,27 @@ export default function Classes() {
         </select>
       </section>
 
-      <div className="assignment-list">
+      <div className="class-grid">
         {filtered.map(item => (
-          <article className="assignment-card" key={item.id}>
-            <div>
-              <h2>{item.class_name} {item.section_name}</h2>
-              <p className="muted">{item.description || 'No description'} • {item.is_active === false ? 'Inactive' : 'Active'}</p>
+          <article className="class-card" key={item.id}>
+            <div className="class-card-body">
+              <h3>{item.class_name}</h3>
+              {item.section_name && <span className="batch-badge">{item.section_name}</span>}
+              <p className="muted">{item.description || 'No description'}</p>
             </div>
-            <span className="row-actions">
-              <button className="icon-btn" type="button" onClick={() => openEdit(item)} title="Edit class"><Edit3 size={18} /></button>
-              {item.is_active === false ? (
-                <button className="btn secondary" type="button" onClick={() => setActive(item, true)}><CheckCircle2 size={18} /> Restore</button>
-              ) : (
-                <button className="btn secondary danger-text" type="button" onClick={() => setActive(item, false)}><XCircle size={18} /> Deactivate</button>
-              )}
-            </span>
+            <div className="class-card-footer">
+              <span className={`status-tag ${item.is_active !== false ? 'active' : 'inactive'}`}>
+                {item.is_active !== false ? 'Active' : 'Inactive'}
+              </span>
+              <div className="actions">
+                <button className="icon-btn" type="button" onClick={() => openEdit(item)} title="Edit class"><Edit3 size={18} /></button>
+                {item.is_active === false ? (
+                  <button className="btn secondary" type="button" onClick={() => setActive(item, true)}><CheckCircle2 size={18} /> Restore</button>
+                ) : (
+                  <button className="btn secondary danger-text" type="button" onClick={() => setActive(item, false)}><XCircle size={18} /> Deactivate</button>
+                )}
+              </div>
+            </div>
           </article>
         ))}
       </div>
