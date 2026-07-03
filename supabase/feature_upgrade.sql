@@ -21,9 +21,22 @@ alter table public.exams add column if not exists randomize_questions boolean no
 alter table public.exams add column if not exists randomize_options boolean not null default false;
 alter table public.exams add column if not exists status text not null default 'published';
 
+alter table public.student_attempts alter column exam_id drop not null;
+alter table public.student_attempts add column if not exists attempt_type text not null default 'exam' check (attempt_type in ('exam', 'practice'));
 alter table public.student_attempts add column if not exists attempt_number int not null default 1;
 alter table public.student_attempts add column if not exists percentage numeric default 0;
 alter table public.student_attempts add column if not exists time_taken_seconds int default 0;
+alter table public.student_attempts add column if not exists practice_subject text;
+alter table public.student_attempts add column if not exists practice_chapter_ids uuid[] default '{}';
+alter table public.student_attempts add column if not exists practice_question_count int;
+alter table public.student_attempts add column if not exists practice_difficulty text default 'mixed';
+alter table public.student_attempts add column if not exists practice_signature text;
+alter table public.student_attempts add column if not exists practice_duration_minutes int default 0;
+
+update public.student_attempts set attempt_type = 'exam' where attempt_type is null;
+
+create index if not exists idx_student_attempts_attempt_type on public.student_attempts(attempt_type);
+create index if not exists idx_student_attempts_practice_signature on public.student_attempts(student_id, attempt_type, practice_signature);
 
 alter table public.student_answers add column if not exists marks_awarded numeric default 0;
 alter table public.student_answers add column if not exists review_status text not null default 'not_answered';
@@ -226,11 +239,14 @@ for select using (
         and ts.student_id = student_attempts.student_id
         and ts.status = 'active'
     )
-    and exists (
-      select 1
-      from public.exams e
-      where e.id = student_attempts.exam_id
-        and e.created_by = auth.uid()
+    and (
+      student_attempts.attempt_type = 'practice'
+      or exists (
+        select 1
+        from public.exams e
+        where e.id = student_attempts.exam_id
+          and e.created_by = auth.uid()
+      )
     )
   )
 );
@@ -264,11 +280,14 @@ for select using (
               and ts.student_id = sa.student_id
               and ts.status = 'active'
           )
-          and exists (
-            select 1
-            from public.exams e
-            where e.id = sa.exam_id
-              and e.created_by = auth.uid()
+          and (
+            sa.attempt_type = 'practice'
+            or exists (
+              select 1
+              from public.exams e
+              where e.id = sa.exam_id
+                and e.created_by = auth.uid()
+            )
           )
         )
       )
@@ -295,11 +314,14 @@ for select using (
               and ts.student_id = sa.student_id
               and ts.status = 'active'
           )
-          and exists (
-            select 1
-            from public.exams e
-            where e.id = sa.exam_id
-              and e.created_by = auth.uid()
+          and (
+            sa.attempt_type = 'practice'
+            or exists (
+              select 1
+              from public.exams e
+              where e.id = sa.exam_id
+                and e.created_by = auth.uid()
+            )
           )
         )
       )
@@ -423,7 +445,7 @@ begin
       where chapter_id = any(v_chapter_ids)
         and coalesce(is_deleted, false) = false
         and (v_exam.difficulty = 'mixed' or difficulty = v_exam.difficulty)
-        and not id = any(v_final_question_ids)
+        and not (id = any(v_final_question_ids))
       order by case when coalesce(v_exam.randomize_questions, true) then random() else 0 end, created_at
       limit v_missing
     ) backup;
@@ -434,8 +456,8 @@ begin
     raise exception 'Not enough questions are available for this exam.';
   end if;
 
-  insert into public.student_attempts(student_id, exam_id, status, attempt_number)
-  values (v_student, p_exam_id, 'in_progress', v_attempt_number)
+  insert into public.student_attempts(student_id, exam_id, attempt_type, status, attempt_number)
+  values (v_student, p_exam_id, 'exam', 'in_progress', v_attempt_number)
   returning id into v_attempt_id;
 
   insert into public.exam_questions(attempt_id, question_id, question_order)

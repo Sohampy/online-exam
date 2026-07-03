@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Edit3, Plus, Search, Trash2, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { BookOpen, CheckCircle2, Download, Edit3, Plus, Search, Trash2, UploadCloud, X } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import CollapsibleSection from '../../components/CollapsibleSection.jsx';
 import HeroHeader from '../../components/HeroHeader.jsx';
+import QuestionUploadModal from '../../components/QuestionUploadModal.jsx';
+import { notify } from '../../components/Notifications.jsx';
 
 const empty = { chapter_id: '', question_text: '', option_a: '', option_b: '', option_c: '', option_d: '', correct_option: 'A', difficulty: 'medium', marks: 1, explanation: '' };
 const defaultFilters = { q: '', subject: 'all', chapter: 'all', difficulty: 'all', createdBy: 'all' };
@@ -20,6 +22,28 @@ export default function Questions() {
   const [filters, setFilters] = useState(defaultFilters);
   const [visibleLimit, setVisibleLimit] = useState(25);
   const [openForm, setOpenForm] = useState(false);
+  const [openUpload, setOpenUpload] = useState(false);
+  const [modalSubject, setModalSubject] = useState('all');
+  const selectAllRef = useRef(null);
+
+  const uniqueSubjects = useMemo(() => {
+    const list = chapters.map(c => c.subject).filter(Boolean);
+    return Array.from(new Set(list));
+  }, [chapters]);
+
+  const filteredModalChapters = useMemo(() => {
+    if (modalSubject === 'all') return chapters;
+    return chapters.filter(c => c.subject === modalSubject);
+  }, [chapters, modalSubject]);
+
+  useEffect(() => {
+    if (form.chapter_id && chapters.length) {
+      const selectedChapter = chapters.find(c => String(c.id) === String(form.chapter_id));
+      if (selectedChapter && selectedChapter.subject) {
+        setModalSubject(selectedChapter.subject);
+      }
+    }
+  }, [form.chapter_id, chapters]);
 
   async function load() {
     setLoadError('');
@@ -28,19 +52,23 @@ export default function Questions() {
       supabase.from('questions').select('*').order('created_at', { ascending: false }),
       supabase.from('profiles').select('id,full_name,email,role')
     ]);
+
     if (chapterError || questionError) {
       setLoadError(questionError?.message || chapterError?.message || 'Could not load questions.');
     }
+
     const chapterRows = c || [];
     const profileRows = p || [];
     const chapterMap = chapterRows.reduce((map, chapter) => {
       map[chapter.id] = chapter;
       return map;
     }, {});
-    const profileMap = profileRows.reduce((map, person) => {
+    const visibleCreators = profileRows.filter(person => person.role !== 'student');
+    const profileMap = visibleCreators.reduce((map, person) => {
       map[person.id] = person;
       return map;
     }, {});
+
     setChapters(chapterRows);
     setQuestions((q || [])
       .filter(question => question.is_deleted !== true)
@@ -49,7 +77,7 @@ export default function Questions() {
         chapters: chapterMap[question.chapter_id] || null,
         profiles: profileMap[question.created_by] || null
       })));
-    setProfiles(p || []);
+    setProfiles(visibleCreators);
   }
 
   useEffect(() => {
@@ -71,8 +99,10 @@ export default function Questions() {
     });
     return [...map.values()].sort((a, b) => `${a.subject || ''} ${a.chapter_name || ''}`.localeCompare(`${b.subject || ''} ${b.chapter_name || ''}`));
   }, [chapters, questions]);
+
   const subjects = [...new Set(questionChapters.map(chapter => chapter.subject).filter(Boolean))].sort();
   const filteredChapters = questionChapters.filter(chapter => filters.subject === 'all' || chapter.subject === filters.subject);
+
   const filtered = useMemo(() => {
     return questions.filter(question => {
       const difficulty = String(question.difficulty || '').toLowerCase();
@@ -86,6 +116,7 @@ export default function Questions() {
       return haystack.includes(filters.q.trim().toLowerCase());
     });
   }, [filters, questions]);
+
   const visibleQuestions = filtered.slice(0, visibleLimit);
   const selectedChapter = chapters.find(item => item.id === filters.chapter);
   const selectedChapterQuestionCount = filters.chapter === 'all'
@@ -101,9 +132,11 @@ export default function Questions() {
     const { error } = edit
       ? await supabase.from('questions').update(payload).eq('id', edit)
       : await supabase.from('questions').insert(payload);
-    if (error) return alert(error.message);
+    if (error) return notify({ type: 'error', title: 'Could not save question', message: error.message });
     setForm(empty);
     setEdit(null);
+    setOpenForm(false);
+    notify({ type: 'success', title: edit ? 'Question updated' : 'Question added' });
     load();
   }
 
@@ -123,7 +156,7 @@ export default function Questions() {
       const question = questions.find(item => item.id === id);
       return profile?.role === 'main_admin' || question?.created_by === user.id;
     });
-    if (!allowedIds.length) return alert('No questions selected that you are allowed to delete.');
+    if (!allowedIds.length) return notify({ type: 'warning', title: 'Nothing to delete', message: 'No questions selected that you are allowed to delete.' });
     if (!options.skipConfirm && !confirm(ids.length === 1 ? 'Are you sure you want to permanently delete this question from the database? This action cannot be undone.' : `Are you sure you want to permanently delete ${label} from the database? This action cannot be undone.`)) return;
 
     try {
@@ -139,38 +172,38 @@ export default function Questions() {
       setSelected([]);
       await load();
       if (blockedCount) {
-        alert(`${deletedCount} questions deleted successfully. ${blockedCount} questions were not deleted because they are already used in student attempts. Used questions cannot be permanently deleted unless report snapshots are created.`);
+        notify({ type: 'warning', title: 'Some questions were kept', message: `${deletedCount} questions deleted. ${blockedCount} questions were not deleted because they are already used in student attempts.` });
       } else {
-        alert(deletedCount === 1 ? 'Question permanently deleted.' : `${deletedCount} questions permanently deleted.`);
+        notify({ type: 'success', title: 'Question deleted', message: deletedCount === 1 ? 'Question permanently deleted.' : `${deletedCount} questions permanently deleted.` });
       }
     } catch (error) {
-      alert(error.message);
+      notify({ type: 'error', title: 'Delete failed', message: error.message });
     }
   }
 
   async function deleteChapterQuestions() {
-    if (filters.chapter === 'all') return alert('Select a chapter first.');
+    if (filters.chapter === 'all') return notify({ type: 'warning', title: 'Select a chapter', message: 'Choose a chapter first.' });
     const chapter = chapters.find(item => item.id === filters.chapter);
     const ownedQuestions = questions.filter(question => question.chapter_id === filters.chapter && (profile?.role === 'main_admin' || question.created_by === user.id));
     const count = ownedQuestions.length;
-    if (!count) return alert('No questions found in this chapter.');
+    if (!count) return notify({ type: 'warning', title: 'No questions found', message: 'No questions found in this chapter.' });
     if (!confirm('This will permanently delete all questions from this chapter from the database. This action cannot be undone. Continue?')) return;
     await permanentlyDelete(ownedQuestions.map(question => question.id), `all safe questions from ${chapter?.chapter_name || 'this chapter'}`, { skipConfirm: true });
   }
 
   async function removeChapter() {
-    if (filters.chapter === 'all') return alert('Select a chapter first.');
+    if (filters.chapter === 'all') return notify({ type: 'warning', title: 'Select a chapter', message: 'Choose a chapter first.' });
     const chapter = chapters.find(item => item.id === filters.chapter);
     const chapterQuestions = questions.filter(question => question.chapter_id === filters.chapter);
     const blockedByOwnership = profile?.role !== 'main_admin' && chapterQuestions.some(question => question.created_by !== user.id);
-    if (blockedByOwnership) return alert('This chapter has questions uploaded by another user, so you cannot remove the whole chapter.');
+    if (blockedByOwnership) return notify({ type: 'warning', title: 'Chapter locked', message: 'This chapter has questions uploaded by another user, so you cannot remove the whole chapter.' });
     if (!confirm(`Remove the chapter "${chapter?.chapter_name || 'selected chapter'}" permanently? This will also delete unused questions inside it. This action cannot be undone.`)) return;
 
     try {
       const ids = chapterQuestions.map(question => question.id);
       const usedIds = await findUsedQuestionIds(ids);
       if (usedIds.size) {
-        return alert('This chapter has questions already used in student attempts. Remove Chapter is blocked so old reports do not break.');
+        return notify({ type: 'warning', title: 'Remove chapter blocked', message: 'This chapter has questions already used in student attempts. Remove Chapter is blocked so old reports do not break.' });
       }
 
       for (const id of ids) {
@@ -182,16 +215,16 @@ export default function Questions() {
       setFilters(defaultFilters);
       setSelected([]);
       await load();
-      alert('Chapter permanently removed.');
+      notify({ type: 'success', title: 'Chapter removed', message: 'Chapter permanently removed.' });
     } catch (error) {
-      alert(error.message);
+      notify({ type: 'error', title: 'Remove failed', message: error.message });
     }
   }
 
   function startEdit(question) {
     setEdit(question.id);
     setForm({ ...question, chapters: undefined, profiles: undefined });
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setOpenForm(true);
   }
 
   function toggleSelected(id) {
@@ -210,31 +243,34 @@ export default function Questions() {
     });
   }
 
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = selected.some(id => visibleManageableIds.includes(id)) && !allVisibleSelected;
+    }
+  }, [allVisibleSelected, selected, visibleManageableIds]);
+
   return (
     <>
       <HeroHeader
         badge="Manage Questions"
         title="Manage Questions"
         singleLine
-        actions={edit && <button className="btn secondary" type="button" onClick={() => { setEdit(null); setForm(empty); }}><X size={18} /> Cancel Edit</button>}
+        actions={
+          <>
+            <button type="button" className="btn" onClick={() => { setEdit(null); setForm(empty); setModalSubject('all'); setOpenForm(true); }}>
+              <Plus size={18} /> Add Question
+            </button>
+            <button type="button" className="btn secondary" onClick={() => setOpenUpload(true)}>
+              <UploadCloud size={18} /> Upload Bank
+            </button>
+            {profile?.role === 'main_admin' && (
+              <Link className="btn secondary" to="/admin/chapters">
+                <BookOpen size={18} /> Add Chapter
+              </Link>
+            )}
+          </>
+        }
       />
-
-      <CollapsibleSection title={edit ? 'Edit Question' : 'Add Question'} open={openForm || Boolean(edit)} onToggle={() => setOpenForm(value => !value)} action={<Plus size={18} />}>
-      <form className="question-form" onSubmit={save}>
-        <div className="grid-2">
-          <label className="field">Chapter<select value={form.chapter_id} onChange={e => setForm({ ...form, chapter_id: e.target.value })}><option value="">Select chapter</option>{chapters.map(c => <option value={c.id} key={c.id}>{c.subject} - {c.chapter_name}</option>)}</select></label>
-          <label className="field">Difficulty<select value={form.difficulty} onChange={e => setForm({ ...form, difficulty: e.target.value })}><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option></select></label>
-        </div>
-        <label className="field">Question text<textarea placeholder="Type the full question here" value={form.question_text} onChange={e => setForm({ ...form, question_text: e.target.value })} /></label>
-        <div className="grid-2">{['a', 'b', 'c', 'd'].map(x => <label className="field" key={x}>Option {x.toUpperCase()}<input placeholder={`Answer choice ${x.toUpperCase()}`} value={form[`option_${x}`]} onChange={e => setForm({ ...form, [`option_${x}`]: e.target.value })} /></label>)}</div>
-        <div className="grid-2">
-          <label className="field">Correct answer<select value={form.correct_option} onChange={e => setForm({ ...form, correct_option: e.target.value })}><option value="A">Option A</option><option value="B">Option B</option><option value="C">Option C</option><option value="D">Option D</option></select></label>
-          <label className="field">Marks per question<input type="number" min="1" value={form.marks} onChange={e => setForm({ ...form, marks: Number(e.target.value) })} /></label>
-        </div>
-        <label className="field">Explanation<textarea placeholder="Explain the correct answer" value={form.explanation || ''} onChange={e => setForm({ ...form, explanation: e.target.value })} /></label>
-        <button className="btn"><CheckCircle2 size={18} /> {edit ? 'Update Question' : 'Add Question'}</button>
-      </form>
-      </CollapsibleSection>
 
       <section className="panel management-toolbar question-toolbar">
         <label className="search-field"><Search size={18} /><input value={filters.q} onChange={e => setFilters({ ...filters, q: e.target.value })} placeholder="Search questions" /></label>
@@ -246,6 +282,7 @@ export default function Questions() {
         <button className="btn secondary" type="button" onClick={() => permanentlyDelete(selected, `${selected.length} selected questions`)} disabled={!selected.length}>Bulk Delete ({selected.length})</button>
         <button className="btn secondary" type="button" onClick={() => setFilters(defaultFilters)}>Reset Filters</button>
       </section>
+
       <section className="panel chapter-delete-panel">
         <div>
           <h2>Delete Chapter Questions</h2>
@@ -260,15 +297,36 @@ export default function Questions() {
           </button>
         </div>
       </section>
+
       {loadError && <div className="notice">Could not load questions: {loadError}. Run the latest Supabase upgrade SQL if columns like created_by/is_deleted are missing.</div>}
 
       <div className="question-bank-table">
-        <div className="qb-row header"><span></span><b>Question</b><b>Subject</b><b>Chapter</b><b>Difficulty</b><b>Marks</b><b>Created By</b><b>Actions</b></div>
+        <div className="qb-row header">
+          <span>
+            <input
+              ref={selectAllRef}
+              type="checkbox"
+              checked={allVisibleSelected}
+              onChange={toggleSelectAllVisible}
+              aria-label={allVisibleSelected ? 'Clear all visible questions' : 'Select all visible questions'}
+              disabled={!visibleManageableIds.length}
+            />
+          </span>
+          <b>Question</b><b>Subject</b><b>Chapter</b><b>Difficulty</b><b>Marks</b><b>Created By</b><b>Actions</b>
+        </div>
         {visibleQuestions.map(q => {
           const canManage = profile?.role === 'main_admin' || q.created_by === user.id;
           return (
             <div className="qb-row" key={q.id}>
-              <input type="checkbox" checked={selected.includes(q.id)} onChange={() => toggleSelected(q.id)} disabled={!canManage} />
+              <span>
+                <input
+                  type="checkbox"
+                  checked={selected.includes(q.id)}
+                  onChange={() => toggleSelected(q.id)}
+                  disabled={!canManage}
+                  aria-label={`Select question: ${q.question_text}`}
+                />
+              </span>
               <span>{q.question_text}</span>
               <span>{q.chapters?.subject || '-'}</span>
               <span>{q.chapters?.chapter_name || '-'}</span>
@@ -283,16 +341,72 @@ export default function Questions() {
           );
         })}
       </div>
+
       <div className="pagination-row">
         <span className="muted">Showing {Math.min(visibleLimit, filtered.length)} of {filtered.length} questions</span>
         {visibleLimit < filtered.length && <button className="btn secondary" type="button" onClick={() => setVisibleLimit(limit => limit + 25)}>Load More</button>}
       </div>
+
       {!filtered.length && !loadError && (
         <div className="panel empty-state">
           <b>No questions found.</b>
           <p className="muted">Try Reset Filters. If this stays empty after an upload, run the latest Supabase upgrade SQL and check that your account has Admin or Teacher role.</p>
         </div>
       )}
+
+      {openForm && (
+        <div className="modal-backdrop" role="presentation" onClick={() => { setOpenForm(false); setEdit(null); setForm(empty); }}>
+          <div className="modal-card question-modal" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <div>
+                <span className="eyebrow">{edit ? 'Edit question' : 'Add question'}</span>
+                <h2>{edit ? 'Edit Question' : 'Add Question'}</h2>
+              </div>
+              <button className="icon-btn" type="button" onClick={() => { setOpenForm(false); setEdit(null); setForm(empty); }}><X size={18} /></button>
+            </div>
+            <form className="modal-form" onSubmit={save}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '16px' }}>
+                <label className="field">Subject
+                  <select value={modalSubject} onChange={e => { setModalSubject(e.target.value); setForm(f => ({ ...f, chapter_id: '' })); }}>
+                    <option value="all">All Subjects</option>
+                    {uniqueSubjects.map(sub => (
+                      <option key={sub} value={sub}>{sub}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">Chapter
+                  <select value={form.chapter_id} onChange={e => setForm(f => ({ ...f, chapter_id: e.target.value }))}>
+                    <option value="">Select chapter</option>
+                    {filteredModalChapters.map(c => (
+                      <option value={c.id} key={c.id}>{c.subject} - {c.chapter_name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">Difficulty
+                  <select value={form.difficulty} onChange={e => setForm(f => ({ ...f, difficulty: e.target.value }))}>
+                    <option value="easy">Easy</option>
+                    <option value="medium">Medium</option>
+                    <option value="hard">Hard</option>
+                  </select>
+                </label>
+              </div>
+              <label className="field">Question text<textarea placeholder="Type the full question here" value={form.question_text} onChange={e => setForm({ ...form, question_text: e.target.value })} /></label>
+              <div className="grid-2">{['a', 'b', 'c', 'd'].map(x => <label className="field" key={x}>Option {x.toUpperCase()}<input placeholder={`Answer choice ${x.toUpperCase()}`} value={form[`option_${x}`]} onChange={e => setForm({ ...form, [`option_${x}`]: e.target.value })} /></label>)}</div>
+              <div className="grid-2">
+                <label className="field">Correct answer<select value={form.correct_option} onChange={e => setForm({ ...form, correct_option: e.target.value })}><option value="A">Option A</option><option value="B">Option B</option><option value="C">Option C</option><option value="D">Option D</option></select></label>
+                <label className="field">Marks per question<input type="number" min="1" value={form.marks} onChange={e => setForm({ ...form, marks: Number(e.target.value) })} /></label>
+              </div>
+              <label className="field">Explanation<textarea placeholder="Explain the correct answer" value={form.explanation || ''} onChange={e => setForm({ ...form, explanation: e.target.value })} /></label>
+              <div className="modal-actions">
+                <button className="btn secondary" type="button" onClick={() => { setOpenForm(false); setEdit(null); setForm(empty); }}>Cancel</button>
+                <button className="btn" type="submit"><CheckCircle2 size={18} /> {edit ? 'Update Question' : 'Add Question'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      <QuestionUploadModal open={openUpload} onClose={() => setOpenUpload(false)} onImported={load} />
     </>
   );
 }
