@@ -38,23 +38,70 @@ export default function TeacherDashboard() {
         actions={(
           <>
           <Link className="btn" to="/teacher/exams"><Plus size={18} /> Create Exam</Link>
-          <Link className="btn secondary" to="/teacher/upload"><FileQuestion size={18} /> Upload Questions</Link>
+          <Link className="btn secondary" to="/teacher/questions"><FileQuestion size={18} /> Manage Questions</Link>
           <Link className="btn secondary" to="/teacher/students"><Users size={18} /> My Students</Link>
           </>
         )}
       />
-      <div className="cards stat-strip">
-        <Link className="card soft-card clickable-card" to="/teacher/students" aria-label="Open assigned students">
-          <Users size={22} /><h3>{stats.students}</h3><p>Assigned Students</p>
+      <div className="cards stat-strip" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '16px' }}>
+        <Link
+          className="card soft-card clickable-card"
+          to="/teacher/students"
+          aria-label="Open assigned students"
+          style={{ display: 'flex', alignItems: 'center', gap: '12px', textAlign: 'left', padding: '12px 16px', borderRadius: '10px', border: '1px solid #dbe3ef', width: '100%', textDecoration: 'none' }}
+        >
+          <span style={{ display: 'inline-flex', padding: '6px', background: '#e0f2fe', color: '#0284c7', borderRadius: '6px', flexShrink: 0 }}>
+            <Users size={18} />
+          </span>
+          <div style={{ flex: 1 }}>
+            <h3 style={{ margin: 0, fontSize: '1.15rem', color: '#1e293b', fontWeight: 700 }}>{stats.students}</h3>
+            <p className="muted" style={{ margin: '2px 0 0 0', fontSize: '0.75rem', lineHeight: '1.3' }}>Assigned Students</p>
+          </div>
         </Link>
-        <Link className="card soft-card clickable-card" to="/teacher/exams" aria-label="Open assigned exams">
-          <ClipboardList size={22} /><h3>{stats.exams}</h3><p>Assigned Exams</p>
+
+        <Link
+          className="card soft-card clickable-card"
+          to="/teacher/exams"
+          aria-label="Open assigned exams"
+          style={{ display: 'flex', alignItems: 'center', gap: '12px', textAlign: 'left', padding: '12px 16px', borderRadius: '10px', border: '1px solid #dbe3ef', width: '100%', textDecoration: 'none' }}
+        >
+          <span style={{ display: 'inline-flex', padding: '6px', background: '#f0fdf4', color: '#16a34a', borderRadius: '6px', flexShrink: 0 }}>
+            <ClipboardList size={18} />
+          </span>
+          <div style={{ flex: 1 }}>
+            <h3 style={{ margin: 0, fontSize: '1.15rem', color: '#1e293b', fontWeight: 700 }}>{stats.exams}</h3>
+            <p className="muted" style={{ margin: '2px 0 0 0', fontSize: '0.75rem', lineHeight: '1.3' }}>Assigned Exams</p>
+          </div>
         </Link>
-        <Link className="card soft-card clickable-card" to="/teacher/reports" aria-label="Open teacher reports">
-          <BarChart3 size={22} /><h3>View</h3><p>Reports</p>
+
+        <Link
+          className="card soft-card clickable-card"
+          to="/teacher/reports"
+          aria-label="Open teacher reports"
+          style={{ display: 'flex', alignItems: 'center', gap: '12px', textAlign: 'left', padding: '12px 16px', borderRadius: '10px', border: '1px solid #dbe3ef', width: '100%', textDecoration: 'none' }}
+        >
+          <span style={{ display: 'inline-flex', padding: '6px', background: '#fff7ed', color: '#ea580c', borderRadius: '6px', flexShrink: 0 }}>
+            <BarChart3 size={18} />
+          </span>
+          <div style={{ flex: 1 }}>
+            <h3 style={{ margin: 0, fontSize: '1.15rem', color: '#1e293b', fontWeight: 700 }}>View</h3>
+            <p className="muted" style={{ margin: '2px 0 0 0', fontSize: '0.75rem', lineHeight: '1.3' }}>Reports & Analytics</p>
+          </div>
         </Link>
-        <Link className="card soft-card clickable-card" to="/teacher/upload" aria-label="Open question bank upload">
-          <FileQuestion size={22} /><h3>Upload</h3><p>Question Bank</p>
+
+        <Link
+          className="card soft-card clickable-card"
+          to="/teacher/questions"
+          aria-label="Open question bank management"
+          style={{ display: 'flex', alignItems: 'center', gap: '12px', textAlign: 'left', padding: '12px 16px', borderRadius: '10px', border: '1px solid #dbe3ef', width: '100%', textDecoration: 'none' }}
+        >
+          <span style={{ display: 'inline-flex', padding: '6px', background: '#f5f3ff', color: '#6d28d9', borderRadius: '6px', flexShrink: 0 }}>
+            <FileQuestion size={18} />
+          </span>
+          <div style={{ flex: 1 }}>
+            <h3 style={{ margin: 0, fontSize: '1.15rem', color: '#1e293b', fontWeight: 700 }}>Manage</h3>
+            <p className="muted" style={{ margin: '2px 0 0 0', fontSize: '0.75rem', lineHeight: '1.3' }}>Question Bank</p>
+          </div>
         </Link>
       </div>
     </>

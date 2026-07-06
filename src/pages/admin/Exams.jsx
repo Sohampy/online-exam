@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { BarChart3, CalendarClock, CheckCircle2, Edit3, Eye, EyeOff, Layers, Plus, Trash2, X } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import CollapsibleSection from '../../components/CollapsibleSection.jsx';
 import HeroHeader from '../../components/HeroHeader.jsx';
+import { notify } from '../../components/Notifications.jsx';
 
 const empty = {
   title: '',
@@ -44,6 +44,18 @@ export default function Exams() {
   const [showValidation, setShowValidation] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [openForm, setOpenForm] = useState(false);
+  const [detailExam, setDetailExam] = useState(null);
+  const [modalSubjectFilter, setModalSubjectFilter] = useState('all');
+
+  const subjects = useMemo(() => {
+    const list = chapters.map(c => c.subject).filter(Boolean);
+    return Array.from(new Set(list));
+  }, [chapters]);
+
+  const filteredModalChapters = useMemo(() => {
+    if (modalSubjectFilter === 'all') return chapters;
+    return chapters.filter(c => c.subject === modalSubjectFilter);
+  }, [chapters, modalSubjectFilter]);
 
   async function load() {
     const [{ data: c }, { data: q }, { data: e }, { data: classRows }, { data: studentRows }] = await Promise.all([
@@ -68,37 +80,38 @@ export default function Exams() {
   }, []);
 
   const questionCounts = useMemo(() => {
-    return questions.filter(question => question.is_deleted !== true).reduce((map, question) => {
-      const key = `${question.chapter_id}:${question.difficulty}`;
+    const map = {};
+    questions.forEach(q => {
+      if (q.is_deleted) return;
+      const key = `${q.chapter_id}:${q.difficulty}`;
       map[key] = (map[key] || 0) + 1;
-      map[`${question.chapter_id}:mixed`] = (map[`${question.chapter_id}:mixed`] || 0) + 1;
-      return map;
-    }, {});
+      const anyKey = `${q.chapter_id}:mixed`;
+      map[anyKey] = (map[anyKey] || 0) + 1;
+    });
+    return map;
   }, [questions]);
 
   const selectedStats = useMemo(() => {
-    const chapterCount = selected.length;
-    const maxNeededPerChapter = chapterCount ? Math.ceil(numberValue(form.total_questions) / chapterCount) : 0;
-    const rows = selected.map(id => {
-      const chapter = chapters.find(c => c.id === id);
+    let availableTotal = 0;
+    const weakChapters = [];
+    const targetPerChapter = selected.length ? Math.floor(numberValue(form.total_questions) / selected.length) : 0;
+    selected.forEach(id => {
       const available = questionCounts[`${id}:${form.difficulty}`] || 0;
-      return { id, name: chapter?.chapter_name || 'Unknown chapter', available };
+      availableTotal += available;
+      if (available < targetPerChapter) weakChapters.push(id);
     });
-    const availableTotal = rows.reduce((sum, row) => sum + row.available, 0);
-    const weakChapters = rows.filter(row => row.available < maxNeededPerChapter);
-    return { rows, availableTotal, maxNeededPerChapter, weakChapters };
-  }, [chapters, form.difficulty, form.total_questions, questionCounts, selected]);
+    return { availableTotal, weakChapters };
+  }, [form.difficulty, form.total_questions, questionCounts, selected]);
 
   const formIssues = useMemo(() => {
     const issues = [];
-    if (!form.title.trim()) issues.push('Add an exam title.');
+    if (!form.title.trim()) issues.push('Exam title is required.');
     if (numberValue(form.total_questions) <= 0) issues.push('Total questions must be greater than 0.');
-    if (numberValue(form.duration_minutes) <= 0) issues.push('Duration must be greater than 0.');
     if (numberValue(form.min_chapters) <= 0) issues.push('Minimum chapters must be greater than 0.');
     if (selected.length < numberValue(form.min_chapters)) issues.push(`Select at least ${form.min_chapters} chapters.`);
     if (selectedStats.availableTotal < numberValue(form.total_questions)) issues.push('Selected chapters do not have enough questions.');
     return issues;
-  }, [form, selected.length, selectedStats]);
+  }, [form.min_chapters, form.title, form.total_questions, selected.length, selectedStats]);
 
   const formWarnings = useMemo(() => {
     const warnings = [];
@@ -114,6 +127,7 @@ export default function Exams() {
     setVisibility({ type: 'all_students', classIds: [], studentIds: [] });
     setEditingId(null);
     setShowValidation(false);
+    setModalSubjectFilter('all');
     setOpenForm(false);
   }
 
@@ -123,6 +137,7 @@ export default function Exams() {
 
   function editExam(exam) {
     setEditingId(exam.id);
+    setOpenForm(true);
     setForm({
       title: exam.title,
       total_questions: exam.total_questions,
@@ -220,7 +235,7 @@ export default function Exams() {
       setSuccessMessage(wasEditing ? 'Exam updated successfully.' : 'Exam created successfully.');
       load();
     } catch (error) {
-      alert(error.message);
+      notify({ type: 'error', title: 'Could not save exam', message: error.message });
     } finally {
       setSaving(false);
     }
@@ -229,7 +244,7 @@ export default function Exams() {
   async function deleteExam(id) {
     if (!confirm('Delete this exam? Student attempts linked to it will also be removed by the database.')) return;
     const { error } = await supabase.from('exams').delete().eq('id', id);
-    if (error) return alert(error.message);
+    if (error) return notify({ type: 'error', title: 'Could not delete exam', message: error.message });
     load();
   }
 
@@ -238,7 +253,7 @@ export default function Exams() {
     if (next.analysis_visible) next.result_visible = true;
     if (!next.result_visible) next.analysis_visible = false;
     const { error } = await supabase.from('exams').update(next).eq('id', exam.id);
-    if (error) return alert(error.message);
+    if (error) return notify({ type: 'error', title: 'Could not update exam', message: error.message });
     setExams(current => current.map(item => item.id === exam.id ? { ...item, ...next } : item));
   }
 
@@ -255,81 +270,121 @@ export default function Exams() {
         badge="Exam Management"
         title="Exam Management"
         singleLine
-        actions={<button className="btn secondary" type="button" onClick={resetForm}><Plus size={18} /> New Exam</button>}
+        actions={
+          <button type="button" className="btn" onClick={() => { setEditingId(null); setOpenForm(true); }}>
+            <Plus size={18} /> Create Exam
+          </button>
+        }
       />
 
-      <CollapsibleSection title={editingId ? 'Edit Exam' : 'Create Exam'} open={openForm || Boolean(editingId)} onToggle={() => setOpenForm(value => !value)} action={editingId ? <X size={18} /> : <Plus size={18} />}>
-      <form className="panel exam-builder" onSubmit={save}>
-        {editingId && <button className="icon-btn" type="button" onClick={resetForm} title="Cancel edit"><X size={18} /></button>}
-
-        <div className="grid-2">
-          <label className="field">Title<input placeholder="Exam title" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} /></label>
-          <label className="field">Difficulty<select value={form.difficulty} onChange={e => setForm({ ...form, difficulty: e.target.value })}><option value="mixed">Mixed</option><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option></select></label>
-          <label className="field">Total questions<input type="number" min="1" placeholder="20" value={form.total_questions} onChange={e => setForm({ ...form, total_questions: e.target.value })} /></label>
-          <label className="field">Minimum chapters<input type="number" min="1" placeholder="5" value={form.min_chapters} onChange={e => setForm({ ...form, min_chapters: e.target.value })} /></label>
-          <label className="field">Duration minutes<input type="number" min="1" placeholder="30" value={form.duration_minutes} onChange={e => setForm({ ...form, duration_minutes: e.target.value })} /></label>
-          <label className="field">Marks per question<input type="number" min="1" placeholder="1" value={form.marks_per_question} onChange={e => setForm({ ...form, marks_per_question: e.target.value })} /></label>
-          <label className="field">Total marks<input type="number" min="1" placeholder="20" value={form.total_marks} onChange={e => setForm({ ...form, total_marks: e.target.value })} /></label>
-          <label className="field">Passing marks<input type="number" min="0" placeholder="10" value={form.passing_marks} onChange={e => setForm({ ...form, passing_marks: e.target.value })} /></label>
-        </div>
-
-        <div className="toggle-row">
-          <label><input type="checkbox" checked={form.result_visible} onChange={e => setForm({ ...form, result_visible: e.target.checked, analysis_visible: e.target.checked ? form.analysis_visible : false })} /> Publish result</label>
-          <label><input type="checkbox" checked={form.analysis_visible} onChange={e => setForm({ ...form, analysis_visible: e.target.checked, result_visible: e.target.checked ? true : form.result_visible })} /> Detailed analysis</label>
-          <label><input type="checkbox" checked={form.show_correct_answers} onChange={e => setForm({ ...form, show_correct_answers: e.target.checked })} /> Show correct answers</label>
-          <label><input type="checkbox" checked={form.randomize_questions} onChange={e => setForm({ ...form, randomize_questions: e.target.checked })} /> Randomize questions</label>
-          <label><input type="checkbox" checked={form.randomize_options} onChange={e => setForm({ ...form, randomize_options: e.target.checked })} /> Randomize options</label>
-          <label><input type="checkbox" checked={form.allow_multiple_attempts} onChange={e => setForm({ ...form, allow_multiple_attempts: e.target.checked })} /> Allow multiple attempts</label>
-        </div>
-        {form.allow_multiple_attempts && <div className="grid-2"><label className="field">Maximum attempts<input type="number" min="1" placeholder="e.g. 2" value={form.max_attempts} onChange={e => setForm({ ...form, max_attempts: e.target.value })} /></label><label className="field">Status<select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}><option value="published">Published</option><option value="draft">Draft</option><option value="archived">Archived</option></select></label></div>}
-
-        {profile?.role === 'main_admin' && (
-          <section className="visibility-box">
-            <h2>Who can see this exam?</h2>
-            <div className="toggle-row">
-              <label><input type="radio" name="visibility" checked={visibility.type === 'all_students'} onChange={() => setVisibility({ type: 'all_students', classIds: [], studentIds: [] })} /> All Students</label>
-              <label><input type="radio" name="visibility" checked={visibility.type === 'class_wise'} onChange={() => setVisibility({ ...visibility, type: 'class_wise' })} /> Class-wise</label>
-              <label><input type="radio" name="visibility" checked={visibility.type === 'specific_students'} onChange={() => setVisibility({ ...visibility, type: 'specific_students' })} /> Specific Students</label>
+      {openForm && (
+        <div className="modal-backdrop" role="presentation" onClick={resetForm}>
+          <div className="modal-card exam-modal" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <div>
+                <span className="eyebrow">{editingId ? 'Edit exam' : 'Create exam'}</span>
+                <h2>{editingId ? 'Edit Exam' : 'Create Exam'}</h2>
+              </div>
+              <button className="icon-btn" type="button" onClick={resetForm} aria-label="Close modal"><X size={18} /></button>
             </div>
-            {visibility.type === 'class_wise' && <div className="chip-list">{classes.map(item => <button type="button" className={visibility.classIds.includes(item.id) ? 'chip selected' : 'chip'} onClick={() => toggleMulti('classIds', item.id)} key={item.id}>{item.class_name} {item.section_name}</button>)}</div>}
-            {visibility.type === 'specific_students' && <div className="chip-list">{students.map(item => <button type="button" className={visibility.studentIds.includes(item.id) ? 'chip selected' : 'chip'} onClick={() => toggleMulti('studentIds', item.id)} key={item.id}>{item.full_name}<small>{item.class_name}</small></button>)}</div>}
-          </section>
-        )}
+            <form className="modal-form exam-builder" onSubmit={save}>
 
-        <div className="section-title compact"><div><h2>Select Chapters</h2></div></div>
+              <div className="grid-2">
+                <label className="field">Title<input placeholder="Exam title" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} /></label>
+                <label className="field">Difficulty<select value={form.difficulty} onChange={e => setForm({ ...form, difficulty: e.target.value })}><option value="mixed">Mixed</option><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option></select></label>
+                <label className="field">Total questions<input type="number" min="1" placeholder="20" value={form.total_questions} onChange={e => setForm({ ...form, total_questions: e.target.value })} /></label>
+                <label className="field">Minimum chapters<input type="number" min="1" placeholder="5" value={form.min_chapters} onChange={e => setForm({ ...form, min_chapters: e.target.value })} /></label>
+                <label className="field">Duration minutes<input type="number" min="1" placeholder="30" value={form.duration_minutes} onChange={e => setForm({ ...form, duration_minutes: e.target.value })} /></label>
+                <label className="field">Marks per question<input type="number" min="1" placeholder="1" value={form.marks_per_question} onChange={e => setForm({ ...form, marks_per_question: e.target.value })} /></label>
+                <label className="field">Total marks<input type="number" min="1" placeholder="20" value={form.total_marks} onChange={e => setForm({ ...form, total_marks: e.target.value })} /></label>
+                <label className="field">Passing marks<input type="number" min="0" placeholder="10" value={form.passing_marks} onChange={e => setForm({ ...form, passing_marks: e.target.value })} /></label>
+              </div>
 
-        <div className="chapter-grid">
-          {chapters.map(chapter => {
-            const available = questionCounts[`${chapter.id}:${form.difficulty}`] || 0;
-            const isSelected = selected.includes(chapter.id);
-            return (
-              <button type="button" className={isSelected ? 'chapter-choice selected' : 'chapter-choice'} onClick={() => toggle(chapter.id)} key={chapter.id}>
-                <span><b>{chapter.chapter_name}</b><small>{chapter.subject}</small></span>
-                <strong>{available}</strong>
-              </button>
-            );
-          })}
+              <div className="toggle-row">
+                <label><input type="checkbox" checked={form.result_visible} onChange={e => setForm({ ...form, result_visible: e.target.checked, analysis_visible: e.target.checked ? form.analysis_visible : false })} /> Publish result</label>
+                <label><input type="checkbox" checked={form.analysis_visible} onChange={e => setForm({ ...form, analysis_visible: e.target.checked, result_visible: e.target.checked ? true : form.result_visible })} /> Detailed analysis</label>
+                <label><input type="checkbox" checked={form.show_correct_answers} onChange={e => setForm({ ...form, show_correct_answers: e.target.checked })} /> Show correct answers</label>
+                <label><input type="checkbox" checked={form.randomize_questions} onChange={e => setForm({ ...form, randomize_questions: e.target.checked })} /> Randomize questions</label>
+                <label><input type="checkbox" checked={form.randomize_options} onChange={e => setForm({ ...form, randomize_options: e.target.checked })} /> Randomize options</label>
+                <label><input type="checkbox" checked={form.allow_multiple_attempts} onChange={e => setForm({ ...form, allow_multiple_attempts: e.target.checked })} /> Allow multiple attempts</label>
+              </div>
+              {form.allow_multiple_attempts && <div className="grid-2"><label className="field">Maximum attempts<input type="number" min="1" placeholder="e.g. 2" value={form.max_attempts} onChange={e => setForm({ ...form, max_attempts: e.target.value })} /></label><label className="field">Status<select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}><option value="published">Published</option><option value="draft">Draft</option><option value="archived">Archived</option></select></label></div>}
+
+              {profile?.role === 'main_admin' && (
+                <section className="visibility-box">
+                  <h2>Who can see this exam?</h2>
+                  <div className="toggle-row">
+                    <label><input type="radio" name="visibility" checked={visibility.type === 'all_students'} onChange={() => setVisibility({ type: 'all_students', classIds: [], studentIds: [] })} /> All Students</label>
+                    <label><input type="radio" name="visibility" checked={visibility.type === 'class_wise'} onChange={() => setVisibility({ ...visibility, type: 'class_wise' })} /> Class-wise</label>
+                    <label><input type="radio" name="visibility" checked={visibility.type === 'specific_students'} onChange={() => setVisibility({ ...visibility, type: 'specific_students' })} /> Specific Students</label>
+                  </div>
+                  {visibility.type === 'class_wise' && <div className="chip-list">{classes.map(item => <button type="button" className={visibility.classIds.includes(item.id) ? 'chip selected' : 'chip'} onClick={() => toggleMulti('classIds', item.id)} key={item.id}>{item.class_name} {item.section_name}</button>)}</div>}
+                  {visibility.type === 'specific_students' && <div className="chip-list">{students.map(item => <button type="button" className={visibility.studentIds.includes(item.id) ? 'chip selected' : 'chip'} onClick={() => toggleMulti('studentIds', item.id)} key={item.id}>{item.full_name}<small>{item.class_name}</small></button>)}</div>}
+                </section>
+              )}
+
+              <div className="section-title compact"><div><h2>Select Chapters</h2></div></div>
+
+              <div style={{ marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <label style={{ fontSize: '0.85rem', fontWeight: 600, color: '#475569' }}>Subject:</label>
+                <select
+                  value={modalSubjectFilter}
+                  onChange={e => setModalSubjectFilter(e.target.value)}
+                  style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #dbe3ef', fontSize: '0.85rem', background: '#fff', cursor: 'pointer' }}
+                >
+                  <option value="all">All Subjects</option>
+                  {subjects.map(sub => (
+                    <option key={sub} value={sub}>{sub}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="chapter-grid">
+                {filteredModalChapters.map(chapter => {
+                  const available = questionCounts[`${chapter.id}:${form.difficulty}`] || 0;
+                  const isSelected = selected.includes(chapter.id);
+                  return (
+                    <button type="button" className={isSelected ? 'chapter-choice selected' : 'chapter-choice'} onClick={() => toggle(chapter.id)} key={chapter.id}>
+                      <span><b>{chapter.chapter_name}</b><small>{chapter.subject}</small></span>
+                      <strong>{available}</strong>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {showValidation && formIssues.length > 0 && <div className="notice">{formIssues[0]}</div>}
+              {formWarnings.length > 0 && <div className="notice info">{formWarnings[0]}</div>}
+              {successMessage && <div className="notice success">{successMessage}</div>}
+
+              <div className="modal-actions">
+                <button className="btn secondary" type="button" onClick={resetForm}>Cancel</button>
+                <button className="btn" disabled={saving}>
+                  <CheckCircle2 size={18} /> {saving ? 'Saving...' : editingId ? 'Update Exam' : 'Create Exam'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
-
-        {showValidation && formIssues.length > 0 && <div className="notice">{formIssues[0]}</div>}
-        {formWarnings.length > 0 && <div className="notice info">{formWarnings[0]}</div>}
-        {successMessage && <div className="notice success">{successMessage}</div>}
-
-        <button className="btn" disabled={saving}>
-          <CheckCircle2 size={18} /> {saving ? 'Saving...' : editingId ? 'Update Exam' : 'Create Exam'}
-        </button>
-      </form>
-      </CollapsibleSection>
+      )}
 
       <div className="exam-list">
         {exams.map(exam => {
           const examChapters = exam.exam_chapters || [];
+          const chaptersText = examChapters.map(row => row.chapters?.chapter_name).filter(Boolean).join(', ') || 'No chapters selected';
+          const truncatedText = chaptersText.length > 60 ? chaptersText.slice(0, 57) + '...' : chaptersText;
           return (
             <article className="exam-card" key={exam.id}>
               <div className="exam-card-main">
                 <div>
                   <h2>{exam.title}</h2>
-                  <p className="muted">{examChapters.map(row => row.chapters?.chapter_name).filter(Boolean).join(', ') || 'No chapters selected'}</p>
+                  <p
+                    className="muted"
+                    title="Click to view full details"
+                    onClick={() => setDetailExam(exam)}
+                    style={{ cursor: 'pointer', textDecoration: chaptersText.length > 60 ? 'underline dotted' : 'none' }}
+                  >
+                    {truncatedText}
+                  </p>
                 </div>
                 <span className="status-pill">{exam.difficulty}</span>
               </div>
@@ -352,6 +407,55 @@ export default function Exams() {
           );
         })}
       </div>
+
+      {detailExam && (
+        <div className="modal-backdrop" role="presentation" onClick={() => setDetailExam(null)}>
+          <div className="modal-card exam-modal" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()} style={{ borderRadius: '8px', maxWidth: '500px' }}>
+            <div className="modal-head">
+              <div>
+                <span className="eyebrow">Exam Details</span>
+                <h2>{detailExam.title}</h2>
+              </div>
+              <button className="icon-btn" type="button" onClick={() => setDetailExam(null)} aria-label="Close modal"><X size={18} /></button>
+            </div>
+
+            <div style={{ display: 'grid', gap: '16px', fontSize: '0.9rem', color: '#334155' }}>
+              <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <h4 style={{ margin: '0 0 8px 0', fontSize: '0.95rem', color: '#1e293b' }}>Structure & Scoring</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px' }}>
+                  <div><strong>Difficulty:</strong> <span className="capitalize">{detailExam.difficulty}</span></div>
+                  <div><strong>Questions:</strong> {detailExam.total_questions}</div>
+                  <div><strong>Duration:</strong> {detailExam.duration_minutes} mins</div>
+                  <div><strong>Marks/Question:</strong> {detailExam.marks_per_question}</div>
+                  <div><strong>Total Marks:</strong> {detailExam.total_marks}</div>
+                  <div><strong>Passing Marks:</strong> {detailExam.passing_marks || 'N/A'}</div>
+                </div>
+              </div>
+
+              <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <h4 style={{ margin: '0 0 8px 0', fontSize: '0.95rem', color: '#1e293b' }}>Visibility & Attempt Rules</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px' }}>
+                  <div><strong>Publish status:</strong> <span className="capitalize">{detailExam.status}</span></div>
+                  <div><strong>Multiple attempts:</strong> {detailExam.allow_multiple_attempts ? `Yes (max ${detailExam.max_attempts || 'unlimited'})` : 'No'}</div>
+                  <div><strong>Publish result:</strong> {detailExam.result_visible ? 'Yes' : 'No'}</div>
+                  <div><strong>Detailed analysis:</strong> {detailExam.analysis_visible ? 'Yes' : 'No'}</div>
+                </div>
+              </div>
+
+              <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <h4 style={{ margin: '0 0 8px 0', fontSize: '0.95rem', color: '#1e293b' }}>Selected Chapters</h4>
+                <p style={{ margin: 0, lineHeight: '1.4', color: '#64748b' }}>
+                  {detailExam.exam_chapters?.map(row => row.chapters?.chapter_name).filter(Boolean).join(', ') || 'No chapters selected'}
+                </p>
+              </div>
+            </div>
+
+            <div className="modal-actions" style={{ marginTop: '20px', paddingTop: '12px', borderTop: '1px solid #e2e8f0' }}>
+              <button className="btn" type="button" onClick={() => setDetailExam(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

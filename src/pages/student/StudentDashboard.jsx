@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { ArrowRight, CheckCircle2, Clock3, FileText, PlayCircle, RotateCcw } from 'lucide-react';
+import { ArrowRight, BookOpen, CheckCircle2, Clock3, FileText, PlayCircle, RotateCcw, ClipboardList } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import LoadingScreen from '../../components/LoadingScreen.jsx';
@@ -46,22 +46,36 @@ export default function StudentDashboard() {
     load();
   }, [profile?.class_id, user?.id]);
 
+  const officialAttempts = useMemo(() => attempts.filter(attempt => (attempt.attempt_type || 'exam') !== 'practice'), [attempts]);
+  const practiceAttempts = useMemo(() => attempts.filter(attempt => attempt.attempt_type === 'practice'), [attempts]);
+
   const attemptsByExam = useMemo(() => {
-    return attempts.reduce((map, attempt) => {
+    return officialAttempts.reduce((map, attempt) => {
       if (!map[attempt.exam_id]) map[attempt.exam_id] = [];
       map[attempt.exam_id].push(attempt);
       return map;
     }, {});
-  }, [attempts]);
+  }, [officialAttempts]);
 
   const stats = useMemo(() => {
-    const completed = attempts.filter(attempt => attempt.status === 'submitted').length;
-    const inProgress = attempts.filter(attempt => attempt.status === 'in_progress').length;
-    const bestAccuracy = attempts.filter(attempt => attempt.status === 'submitted').reduce((best, attempt) => Math.max(best, Number(attempt.accuracy || 0)), 0);
+    const completed = officialAttempts.filter(attempt => attempt.status === 'submitted').length;
+    const inProgress = officialAttempts.filter(attempt => attempt.status === 'in_progress').length;
+    const bestAccuracy = officialAttempts.filter(attempt => attempt.status === 'submitted').reduce((best, attempt) => Math.max(best, Number(attempt.accuracy || 0)), 0);
     return { completed, inProgress, bestAccuracy };
-  }, [attempts]);
+  }, [officialAttempts]);
 
-  const submittedAttempts = useMemo(() => attempts.filter(attempt => attempt.status === 'submitted'), [attempts]);
+  const submittedAttempts = useMemo(() => officialAttempts.filter(attempt => attempt.status === 'submitted'), [officialAttempts]);
+  const practiceSubmittedAttempts = useMemo(() => practiceAttempts.filter(attempt => attempt.status === 'submitted'), [practiceAttempts]);
+  const practiceStats = useMemo(() => {
+    const scores = practiceSubmittedAttempts.map(attempt => Number(attempt.total_score || 0));
+    const accuracies = practiceSubmittedAttempts.map(attempt => Number(attempt.accuracy || attempt.percentage || 0));
+    return {
+      taken: practiceAttempts.length,
+      averageAccuracy: practiceSubmittedAttempts.length ? accuracies.reduce((sum, value) => sum + value, 0) / accuracies.length : 0,
+      bestScore: scores.length ? Math.max(...scores) : 0,
+      recent: [...practiceAttempts].sort((a, b) => new Date(b.started_at || b.submitted_at || 0) - new Date(a.started_at || a.submitted_at || 0)).slice(0, 4)
+    };
+  }, [practiceAttempts, practiceSubmittedAttempts]);
   const visibleExams = useMemo(() => {
     if (view !== 'exams') return exams;
     return exams.filter(exam => {
@@ -93,23 +107,64 @@ export default function StudentDashboard() {
         actions={(
           <>
           <Link className="btn" to="/student/exams"><PlayCircle size={18} /> Available Exams</Link>
-          <Link className="btn secondary" to="/student/attempts"><RotateCcw size={18} /> My Attempts</Link>
+          <Link className="btn secondary" to="/student/practice"><BookOpen size={18} /> Practice Test</Link>
           <Link className="btn secondary" to="/student/results"><CheckCircle2 size={18} /> My Results</Link>
           </>
         )}
       />
 
-      <div className="cards stat-strip">
-        <Link className="card soft-card clickable-card" to="/student/exams" aria-label="Open available exams"><h3>{exams.length}</h3><p>Available exams</p></Link>
-        <Link className="card soft-card clickable-card" to="/student/attempts" aria-label="Open previous attempts"><h3>{attempts.length}</h3><p>My attempts</p></Link>
-        <Link className="card soft-card clickable-card" to="/student/results" aria-label="Open my results"><h3>{stats.completed}</h3><p>My results</p></Link>
+      <div className="cards stat-strip" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '16px' }}>
+        <Link
+          className="card soft-card clickable-card"
+          to="/student/exams"
+          aria-label="Open available exams"
+          style={{ display: 'flex', alignItems: 'center', gap: '12px', textAlign: 'left', padding: '12px 16px', borderRadius: '10px', border: '1px solid #dbe3ef', width: '100%', textDecoration: 'none' }}
+        >
+          <span style={{ display: 'inline-flex', padding: '6px', background: '#e0f2fe', color: '#0284c7', borderRadius: '6px', flexShrink: 0 }}>
+            <ClipboardList size={18} />
+          </span>
+          <div style={{ flex: 1 }}>
+            <h3 style={{ margin: 0, fontSize: '1.15rem', color: '#1e293b', fontWeight: 700 }}>{exams.length}</h3>
+            <p className="muted" style={{ margin: '2px 0 0 0', fontSize: '0.75rem', lineHeight: '1.3' }}>Available exams</p>
+          </div>
+        </Link>
+
+        <Link
+          className="card soft-card clickable-card"
+          to="/student/results"
+          aria-label="Open my results"
+          style={{ display: 'flex', alignItems: 'center', gap: '12px', textAlign: 'left', padding: '12px 16px', borderRadius: '10px', border: '1px solid #dbe3ef', width: '100%', textDecoration: 'none' }}
+        >
+          <span style={{ display: 'inline-flex', padding: '6px', background: '#f0fdf4', color: '#16a34a', borderRadius: '6px', flexShrink: 0 }}>
+            <CheckCircle2 size={18} />
+          </span>
+          <div style={{ flex: 1 }}>
+            <h3 style={{ margin: 0, fontSize: '1.15rem', color: '#1e293b', fontWeight: 700 }}>{stats.completed}</h3>
+            <p className="muted" style={{ margin: '2px 0 0 0', fontSize: '0.75rem', lineHeight: '1.3' }}>My results</p>
+          </div>
+        </Link>
+
+        <Link
+          className="card soft-card clickable-card"
+          to="/student/practice"
+          aria-label="Open practice tests"
+          style={{ display: 'flex', alignItems: 'center', gap: '12px', textAlign: 'left', padding: '12px 16px', borderRadius: '10px', border: '1px solid #dbe3ef', width: '100%', textDecoration: 'none' }}
+        >
+          <span style={{ display: 'inline-flex', padding: '6px', background: '#fff7ed', color: '#ea580c', borderRadius: '6px', flexShrink: 0 }}>
+            <BookOpen size={18} />
+          </span>
+          <div style={{ flex: 1 }}>
+            <h3 style={{ margin: 0, fontSize: '1.15rem', color: '#1e293b', fontWeight: 700 }}>{practiceStats.taken}</h3>
+            <p className="muted" style={{ margin: '2px 0 0 0', fontSize: '0.75rem', lineHeight: '1.3' }}>Practice test</p>
+          </div>
+        </Link>
       </div>
 
       {view === 'attempts' && (
         <section className="panel">
           <h2>My Attempts</h2>
           <div className="table">
-            {attempts.map(attempt => {
+            {officialAttempts.map(attempt => {
               const exam = exams.find(item => item.id === attempt.exam_id);
               return (
                 <div className="tr" key={attempt.id}>
@@ -120,7 +175,7 @@ export default function StudentDashboard() {
                 </div>
               );
             })}
-            {!attempts.length && <p className="muted">No attempts yet.</p>}
+            {!officialAttempts.length && <p className="muted">No attempts yet.</p>}
           </div>
         </section>
       )}

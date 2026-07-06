@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Plus, ShieldCheck, Users } from 'lucide-react';
 import { createDetachedSupabaseClient, supabase } from '../../lib/supabaseClient';
-import CollapsibleSection from '../../components/CollapsibleSection.jsx';
+import { notify } from '../../components/Notifications.jsx';
 
 const emptyPerson = { full_name: '', email: '', password: '', role: 'student', class_id: '' };
 
@@ -39,7 +39,8 @@ export default function Permissions() {
   async function update(user, patch) {
     setSavingId(user.id);
     const { error } = await supabase.from('profiles').update(patch).eq('id', user.id);
-    if (error) alert(error.message);
+    if (error) notify({ type: 'error', title: 'Could not update user', message: error.message });
+    if (!error) notify({ type: 'success', title: 'User updated' });
     await load();
     setSavingId(null);
   }
@@ -47,8 +48,8 @@ export default function Permissions() {
   async function createPerson(e) {
     e.preventDefault();
     setCreateMessage('');
-    if (!person.full_name.trim() || !person.email.trim() || !person.password) return setCreateMessage('Fill name, email, and temporary password.');
-    if (person.password.length < 6) return setCreateMessage('Temporary password must be at least 6 characters.');
+    if (!person.full_name.trim() || !person.email.trim() || !person.password) return notify({ type: 'warning', title: 'Missing details', message: 'Fill name, email, and temporary password.' });
+    if (person.password.length < 6) return notify({ type: 'warning', title: 'Weak password', message: 'Temporary password must be at least 6 characters.' });
 
     setCreating(true);
     const detached = createDetachedSupabaseClient();
@@ -63,7 +64,7 @@ export default function Permissions() {
     });
 
     if (error) {
-      setCreateMessage(error.message);
+      notify({ type: 'error', title: 'Could not create person', message: error.message });
       setCreating(false);
       return;
     }
@@ -81,6 +82,7 @@ export default function Permissions() {
 
     setPerson(emptyPerson);
     setCreateMessage('Person added. Share the temporary password and ask them to change it after login.');
+    notify({ type: 'success', title: 'Person added' });
     await load();
     setCreating(false);
   }
@@ -104,8 +106,25 @@ export default function Permissions() {
         <div className="card soft-card"><Users size={22} /><h3>{stats.students}</h3><p>Students</p></div>
       </div>
 
-      <CollapsibleSection title="Add Person" open={openPersonForm} onToggle={() => setOpenPersonForm(value => !value)} action={<Plus size={18} />}>
-        <form className="panel add-person-panel" onSubmit={createPerson}>
+      <section className="action-tiles">
+        <button type="button" className="action-tile" onClick={() => setOpenPersonForm(true)}>
+          <span><Plus size={22} /></span>
+          <b>Add Person</b>
+          <small>Create student, teacher, or admin logins</small>
+        </button>
+      </section>
+
+      {openPersonForm && (
+        <div className="modal-backdrop" role="presentation" onClick={() => setOpenPersonForm(false)}>
+          <div className="modal-card" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <div>
+                <span className="eyebrow">Add person</span>
+                <h2>Add Person</h2>
+              </div>
+              <button className="icon-btn" type="button" onClick={() => setOpenPersonForm(false)} aria-label="Close modal">×</button>
+            </div>
+            <form className="modal-form" onSubmit={createPerson}>
           <div className="grid-2">
             <label className="field">Full name<input value={person.full_name} onChange={e => setPerson({ ...person, full_name: e.target.value })} placeholder="Person name" /></label>
             <label className="field">Email<input type="email" value={person.email} onChange={e => setPerson({ ...person, email: e.target.value })} placeholder="email@example.com" /></label>
@@ -113,10 +132,15 @@ export default function Permissions() {
             {person.role === 'student' && <label className="field">Class<select value={person.class_id} onChange={e => setPerson({ ...person, class_id: e.target.value })}><option value="">Select class</option>{activeClasses.map(item => <option value={item.id} key={item.id}>{item.class_name} {item.section_name}</option>)}</select></label>}
             <label className="field">Temporary password<input type="text" value={person.password} onChange={e => setPerson({ ...person, password: e.target.value })} placeholder="Minimum 6 characters" /></label>
           </div>
-          <button className="btn" disabled={creating}><Plus size={18} /> {creating ? 'Adding...' : 'Add Person'}</button>
-          {createMessage && <p className="muted">{createMessage}</p>}
-        </form>
-      </CollapsibleSection>
+              <div className="modal-actions">
+                <button className="btn secondary" type="button" onClick={() => setOpenPersonForm(false)}>Cancel</button>
+                <button className="btn" disabled={creating}><Plus size={18} /> {creating ? 'Adding...' : 'Add Person'}</button>
+              </div>
+              {createMessage && <p className="muted">{createMessage}</p>}
+            </form>
+          </div>
+        </div>
+      )}
 
       <div className="permission-list">
         {users.map(user => (
